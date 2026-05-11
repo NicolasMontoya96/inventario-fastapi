@@ -14,16 +14,16 @@ class Usuario(SQLModel, table=True):
 
 class Cliente(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    nombre: str
-    apellido: str
-    email: Optional[str] = None
-    descripcion: Optional[str] = None
-    telefono: Optional[str] = None
+    nombre: str = Field(nullable=False)
+    apellido: Optional[str] = Field(default=None)
+    email: Optional[str] = Field(default=None)
+    descripcion: Optional[str] = Field(default=None)
+    telefono: Optional[str] = Field(default=None)
 
 
 class Proveedor(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    nombre_empresa: Optional[str]
+    nombre_empresa: str
     nit: str = Field(unique=True)
     contacto: Optional[str] = None
     descripcion: Optional[str] = None
