@@ -1,4 +1,5 @@
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import Column, SQLModel,JSON, Field, Relationship
+from sqlalchemy import JSON
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
@@ -28,6 +29,11 @@ class Proveedor(SQLModel, table=True):
     descripcion: Optional[str] = None
 
 # --- TABLAS DEPENDIENTES ---
+class Categoria(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True) 
+    nombre: str
+    descripcion: Optional[str]
+
 
 class Producto(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -35,8 +41,11 @@ class Producto(SQLModel, table=True):
     descripcion: Optional[str] = None
     precio_venta: Decimal
     stock: int = Field(default=0)
-    #Relación con Proveedor
+    especificaciones: dict = Field(default={}, sa_column=Column(JSON))
+    
+    # Llaves foráneas
     proveedor_id: int = Field(foreign_key="proveedor.id")
+    categoria_id: int = Field(foreign_key="categoria.id") # Añade esta línea
 
 class Ventas(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
