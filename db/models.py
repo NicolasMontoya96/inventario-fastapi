@@ -43,12 +43,10 @@ class Producto(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     nombre: str
     descripcion: Optional[str] = None
+    precio_compra: Decimal = Field(default=Decimal("0.0")) 
     precio_venta: Decimal
     stock: int = Field(default=0)
-    
-    # Cambiado a JSONB para mejor rendimiento en Postgres
     especificaciones: dict = Field(default={}, sa_column=Column(JSONB))
-    
     proveedor_id: int = Field(foreign_key="proveedor.id")
     categoria_id: int = Field(foreign_key="categoria.id")
 
