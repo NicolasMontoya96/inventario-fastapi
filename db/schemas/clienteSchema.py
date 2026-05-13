@@ -1,7 +1,8 @@
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import JSON
+from sqlmodel import SQLModel, Field
 from typing import Optional
 from decimal import Decimal
+
+# --- SCHEMAS PARA CLIENTE ---
 
 class ClienteBase(SQLModel):
     nombre: str
@@ -12,9 +13,12 @@ class ClienteBase(SQLModel):
 
 class ClienteCreate(ClienteBase):
     pass
+    # No incluimos saldo_deuda aquí. La base de datos lo iniciará en 0.0 automáticamente.
 
 class ClienteResponse(ClienteBase):
     id: int
+    saldo_deuda: Decimal 
+    # Aquí SÍ lo incluimos. Así el frontend o Thunder Client mostrarán la deuda actual.
 
 class ClienteUpdate(SQLModel):
     nombre: Optional[str] = None
@@ -22,4 +26,4 @@ class ClienteUpdate(SQLModel):
     email: Optional[str] = None
     descripcion: Optional[str] = None
     telefono: Optional[str] = None
-
+    # No incluimos saldo_deuda aquí. Las deudas solo se bajan con "Abonos" o suben con "Ventas a Crédito".

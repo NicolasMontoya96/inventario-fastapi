@@ -1,41 +1,41 @@
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import JSON
-from typing import Optional
+from sqlmodel import SQLModel, Field
+from typing import Optional, Dict, Any
 from decimal import Decimal
 
-# 1. BASE: Lo que es común a todos (Evita repetir código)
 class ProductoBase(SQLModel):
     nombre: str = Field(min_length=3, max_length=100)
-    descripcion: Optional[str] 
-    precio_venta: float = Field(default=0.0, ge=0.0) # ge=0.0 asegura que no sea negativo
+    descripcion: Optional[str] = None
+    # Cambiado a Decimal para precisión total
+    precio_venta: Decimal = Field(default=Decimal("0.0"), ge=Decimal("0.0")) 
     stock: int = Field(default=0, ge=0)
+    
+    # El campo mágico para las variantes (Tallas, Colores, etc.)
+    especificaciones: Dict[str, Any] = Field(default={}) 
+    
     categoria_id: int
-    proveedor_id: int # Esta es la llave que conecta con el proveedor
-
+    proveedor_id: int
 
 class ProductoCreate(ProductoBase):
     pass  
 
-
 class ProductoList(SQLModel):
     id: int
     nombre: str
-    precio_venta: float
+    precio_venta: Decimal # También aquí para el listado
     stock: int
-    
+    # En el listado podrías omitir las especificaciones para que sea más rápido
 
-
-# Lo que el sistema devuelve
 class ProductoResponse(ProductoBase):
-    id: int  # Aquí añadimos el ID generado por Postgres
+    id: int 
 
     class Config:
-        from_attributes = True # Esto es vital para que SQLModel convierta el objeto de DB a JSON
-
+        from_attributes = True 
 
 class ProductoUpdate(SQLModel):
-   nombre: Optional[str] = None
-   descripcion: Optional[str] = None
-   precio_venta: Optional[float] = None
-   stock: Optional[int] = None
-   proveedor_id: Optional[int] = None
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    precio_venta: Optional[Decimal] = None # Consistencia con Decimal
+    stock: Optional[int] = None
+    especificaciones: Optional[Dict[str, Any]] = None # También se puede actualizar
+    categoria_id: Optional[int] = None
+    proveedor_id: Optional[int] = None
