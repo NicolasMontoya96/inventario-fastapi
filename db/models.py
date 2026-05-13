@@ -1,5 +1,6 @@
 from sqlmodel import Column, SQLModel,JSON, Field, Relationship
 from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
@@ -14,16 +15,19 @@ class Usuario(SQLModel, table=True):
 
 class Cliente(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    nombre: str
-    apellido: str
-    email: Optional[str] = None
-    descripcion: Optional[str] = None
-    telefono: Optional[str] = None
+    nombre: str = Field(nullable=False)
+    apellido: Optional[str] = Field(default=None)
+    email: Optional[str] = Field(default=None)
+    descripcion: Optional[str] = Field(default=None)
+    telefono: Optional[str] = Field(default=None)
+    
+    # Cambiado a Decimal para que "hable el mismo idioma" que las ventas
+    saldo_deuda: Decimal = Field(default=Decimal("0.0"))
 
 
 class Proveedor(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    nombre_empresa: Optional[str]
+    nombre_empresa: str
     nit: str = Field(unique=True)
     contacto: Optional[str] = None
     descripcion: Optional[str] = None
@@ -41,18 +45,28 @@ class Producto(SQLModel, table=True):
     descripcion: Optional[str] = None
     precio_venta: Decimal
     stock: int = Field(default=0)
-    especificaciones: dict = Field(default={}, sa_column=Column(JSON))
     
-    # Llaves foráneas
+    # Cambiado a JSONB para mejor rendimiento en Postgres
+    especificaciones: dict = Field(default={}, sa_column=Column(JSONB))
+    
     proveedor_id: int = Field(foreign_key="proveedor.id")
-    categoria_id: int = Field(foreign_key="categoria.id") # Añade esta línea
+    categoria_id: int = Field(foreign_key="categoria.id")
 
 class Ventas(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    fecha: datetime
+    fecha: datetime = Field(default_factory=datetime.now)
     cliente_id: int = Field(foreign_key="cliente.id")
-    total: Decimal
-    metodo_pago: str
+    
+    
+    total_venta: Decimal 
+    cuota_inicial: Decimal = Field(default=0.0)
+    monto_en_deuda: Decimal = Field(default=0.0) 
+    
+    es_credito: bool = Field(default=False)
+    metodo_pago: str 
+
+    
+    detalles: list["DetalleVenta"] = Relationship(back_populates="venta")
 
 class DetalleVenta(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -60,6 +74,9 @@ class DetalleVenta(SQLModel, table=True):
     producto_id: int = Field(foreign_key="producto.id")
     cantidad: int
     precio_unitario: Decimal
+
+    # Relación inversa
+    venta: "Ventas" = Relationship(back_populates="detalles")
 
 class Compra(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -74,3 +91,13 @@ class DetalleCompra(SQLModel, table=True):
     producto_id: int = Field(foreign_key="producto.id")
     cantidad: int
     precio_compra:Decimal
+
+
+class Abono(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fecha: datetime = Field(default_factory=datetime.now)
+    cliente_id: int = Field(foreign_key="cliente.id")
+    
+    # Cambiado a Decimal para consistencia contable
+    monto_abonado: Decimal = Field(default=Decimal("0.0"))
+    notas: Optional[str] = Field(default=None)
