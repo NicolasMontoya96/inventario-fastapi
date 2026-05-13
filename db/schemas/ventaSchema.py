@@ -1,7 +1,9 @@
+from datetime import datetime
 from sqlmodel import SQLModel, Field
 from typing import Optional, Dict, Any, List
 from decimal import Decimal
 from .clienteSchema import ClienteCreate
+from db.models import DetalleVenta
 from pydantic import BaseModel, model_validator
 
 
@@ -28,3 +30,18 @@ class VentaCreate(SQLModel):
         if not self.cliente_id and not self.cliente_nuevo:
             raise ValueError("Debes proporcionar un cliente o los datos de cliente_nuevo")
         return self
+    
+
+class VentaResponse(SQLModel):
+    id: int
+    fecha: datetime
+    cliente_id: int
+    total_venta: Decimal
+    cuota_inicial: Decimal # Añadimos esto para tener el reporte completo
+    monto_en_deuda: Decimal
+    es_credito: bool
+    metodo_pago: str
+    
+    # Esta es la lista "anidada" que mencionas. 
+    # Al usar Relationship en el modelo, SQLAlchemy la llena sola.
+    detalles: list[DetalleVenta] = []

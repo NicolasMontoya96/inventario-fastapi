@@ -1,10 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 from decimal import Decimal
-from db.models import Producto, Proveedor, Categoria, Cliente, DetalleVenta, Ventas
-from db.schemas.ventaSchema import DetalleVentaCreate, VentaCreate, ClienteCreate
-from db.schemas.clienteSchema import ClienteCreate
-from sqlalchemy.exc import IntegrityError
+from db.models import Producto, Cliente, DetalleVenta, Ventas
+from db.schemas.ventaSchema import DetalleVentaCreate, VentaCreate, ClienteCreate, VentaResponse
 from db.database import get_session
 
 
@@ -12,6 +10,8 @@ router = APIRouter(
     prefix="/ventas",
     tags=["ventas"]
 )
+
+#------------------------------------------------------------------------------------------------------------------
 
 @router.post("/ventas", response_model=Ventas, status_code=201) # Cambiado a Ventas (o VentaResponse)
 def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)):
@@ -115,9 +115,12 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
     except Exception as e:
         session.rollback() 
         raise HTTPException(status_code=500, detail=f"Error al procesar la venta: {str(e)}")
-
     
-
+#-----------------------------------------------------------------------------------------------------
+@router.get("/", response_model=list[VentaResponse])
+def ventas(session: Session = Depends(get_session)):
+    statement = select(Ventas).order_by(Ventas.fecha.desc()) # Ordenado por fecha, las más nuevas primero
+    return session.exec(statement).all()
     
 
                 
