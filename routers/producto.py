@@ -14,6 +14,7 @@ def productos(session: Session = Depends(get_session)):
      return session.exec(select(Producto)).all()
 
 
+#------------------------------------------------------------------------------------------------
 @router.post("/", response_model=ProductoResponse, status_code=201)
 def create_producto(producto: ProductoCreate, session: Session= Depends(get_session)):
 
@@ -28,7 +29,7 @@ def create_producto(producto: ProductoCreate, session: Session= Depends(get_sess
     session.refresh(db_producto)
     
     return db_producto
-
+#----------------------------------------------------------------------------------------------------
 
 @router.patch("/{id}", response_model=ProductoResponse)
 def actualizar_producto(id: int, producto_data: ProductoUpdate, session: Session = Depends(get_session)):
@@ -56,6 +57,7 @@ def actualizar_producto(id: int, producto_data: ProductoUpdate, session: Session
     session.refresh(db_producto)
     return db_producto
 
+#------------------------------------------------------------------------------------------------
 @router.delete("/{id}")
 def eliminar_producto(id: int, session: Session = Depends(get_session)):
     db_producto = session.get(Producto, id)

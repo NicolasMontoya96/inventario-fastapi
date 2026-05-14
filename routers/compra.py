@@ -6,6 +6,7 @@ from db.database import get_session
 from sqlalchemy.exc import IntegrityError
 from typing import List
 from decimal import Decimal
+from datetime import datetime
 
 
 
@@ -15,8 +16,17 @@ router = APIRouter(
 )
 
 
+@router.get("/", response_model=List[CompraResponse])
+def obtener_historial_compras(session: Session = Depends(get_session)):
+    
+    statement = select(Compra).order_by(Compra.fecha.desc())
+    resultados = session.exec(statement).all()
+    return resultados
 
-@router.post("/compras", response_model=CompraResponse, status_code=201)
+#------------------------------------------------------------------------------------------
+
+
+@router.post("/", response_model=CompraResponse, status_code=201)
 def crear_compra(compra_data: CompraCreate, session: Session = Depends(get_session)):
     
     # 1. RESOLVER EL PROVEEDOR
@@ -73,7 +83,8 @@ def crear_compra(compra_data: CompraCreate, session: Session = Depends(get_sessi
         nueva_compra = Compra(
             proveedor_id=db_proveedor.id,
             numero_factura=compra_data.numero_factura,
-            total=total_factura # El total exacto calculado
+            total=total_factura, # El total exacto calculado
+            fecha=datetime.now()
         )
         session.add(nueva_compra)
         session.flush() # Obtenemos el ID de la nueva_compra

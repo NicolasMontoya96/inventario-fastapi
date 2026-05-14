@@ -27,3 +27,7 @@ class ClienteUpdate(SQLModel):
     descripcion: Optional[str] = None
     telefono: Optional[str] = None
     # No incluimos saldo_deuda aquí. Las deudas solo se bajan con "Abonos" o suben con "Ventas a Crédito".
+
+class AbonoCreate(SQLModel):
+    cliente_id: int
+    monto_pagado: Decimal

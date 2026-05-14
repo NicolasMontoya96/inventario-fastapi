@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 from db.models import Producto, Proveedor, Categoria, Cliente
-from db.schemas.clienteSchema import ClienteCreate, ClienteResponse, ClienteUpdate, ClienteBase
+from db.schemas.clienteSchema import ClienteCreate, ClienteResponse, ClienteUpdate, ClienteBase, AbonoCreate
 from db.database import get_session
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -19,7 +19,7 @@ def clientes(session: Session = Depends(get_session)):
     return clientes
 
 
-@router.post("/clientes", response_model=ClienteResponse, status_code=201)
+@router.post("/", response_model=ClienteResponse, status_code=201)
 def crear_cliente(cliente: ClienteCreate, session: Session= Depends(get_session)):
     statement = select(Cliente).where(Cliente.email == cliente.email)
     email_existente = session.exec(statement).first()
@@ -66,3 +66,33 @@ def actualizar_cliente(id: int, cliente_data: ClienteUpdate, session: Session = 
     return db_cliente
 
 
+
+#-------------------------------------------------------------------------------
+
+@router.post("/abonos", status_code=201)
+def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session)):
+    # 1. Buscamos al cliente
+    db_cliente = session.get(Cliente, abono.cliente_id)
+    if not db_cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    
+    # 2. Validamos que no pague más de lo que debe
+    if abono.monto_pagado > db_cliente.saldo_deuda:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"El cliente solo debe ${db_cliente.saldo_deuda}. No puede abonar ${abono.monto_pagado}"
+        )
+        
+    # 3. Le restamos a la deuda
+    db_cliente.saldo_deuda -= abono.monto_pagado
+    
+    # 4. Guardamos
+    session.add(db_cliente)
+    session.commit()
+    session.refresh(db_cliente)
+    
+    return {
+        "mensaje": "Abono registrado con éxito",
+        "cliente": db_cliente.nombre,
+        "nuevo_saldo_deuda": db_cliente.saldo_deuda
+    }

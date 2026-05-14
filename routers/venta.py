@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 from decimal import Decimal
-from db.models import Producto, Proveedor, Categoria, Cliente, DetalleVenta, Ventas
-from db.schemas.ventaSchema import DetalleVentaCreate, VentaCreate, ClienteCreate
+from typing import List
+from db.models import Producto, Cliente, DetalleVenta, Ventas
+from db.schemas.ventaSchema import DetalleVentaCreate, VentaCreate, VentaResponse
 from db.schemas.clienteSchema import ClienteCreate
 from sqlalchemy.exc import IntegrityError
 from db.database import get_session
@@ -13,7 +14,20 @@ router = APIRouter(
     tags=["ventas"]
 )
 
-@router.post("/ventas", response_model=Ventas, status_code=201) # Cambiado a Ventas (o VentaResponse)
+@router.get("/", response_model=List[VentaResponse])
+def obtener_historial_ventas(session: Session = Depends(get_session)):
+    """
+    Obtiene el historial completo de ventas, ordenado de la más reciente a la más antigua.
+    Incluye automáticamente los detalles de los productos vendidos en cada factura.
+    """
+    statement = select(Ventas).order_by(Ventas.fecha.desc())
+    resultados = session.exec(statement).all()
+    return resultados
+
+
+#---------------------------------------------------------------------------------------------------------------------
+
+@router.post("/", response_model=Ventas, status_code=201) # Cambiado a Ventas (o VentaResponse)
 def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)):
     
     # 1. RESOLVER EL CLIENTE
@@ -116,6 +130,7 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
         session.rollback() 
         raise HTTPException(status_code=500, detail=f"Error al procesar la venta: {str(e)}")
 
+#---------------------------------------------------------------------------------------------
     
 
     

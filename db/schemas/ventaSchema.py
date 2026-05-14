@@ -3,7 +3,20 @@ from typing import Optional, Dict, Any, List
 from decimal import Decimal
 from .clienteSchema import ClienteCreate
 from pydantic import BaseModel, model_validator
+from datetime import datetime
+from db.models import DetalleVenta
 
+
+class VentaResponse(SQLModel):
+    id: int
+    fecha: datetime
+    cliente_id: int
+    total_venta: Decimal
+    cuota_inicial: Decimal
+    monto_en_deuda: Decimal
+    es_credito: bool
+    metodo_pago: str
+    detalles: List[DetalleVenta] = []
 
 class DetalleVentaCreate(SQLModel):
     producto_id: int

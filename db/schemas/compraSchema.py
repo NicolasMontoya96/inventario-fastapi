@@ -2,7 +2,7 @@ from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime
 from pydantic import model_validator
-from models import DetalleCompra
+from db.models import DetalleCompra
 from sqlmodel import SQLModel
 from .proveedorSchema import ProveedorCreate 
 
