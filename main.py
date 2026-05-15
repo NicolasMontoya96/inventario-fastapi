@@ -8,11 +8,18 @@ from auth.auth import obtener_usuario_actual
 
 app = FastAPI(title="API de Inventario")
 
+# 1. Creamos una "Lista Blanca" con la URL de tu Frontend
+origenes_permitidos = [
+    "http://localhost:5173",     # Puerto estándar de Vite
+    "http://127.0.0.1:5173",     # Variante por si usas la IP directa
+]
+
+# 2. Aplicamos la lista al CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=origenes_permitidos,  # <--- Quitamos el "*" y ponemos la lista
     allow_credentials=True,
-    allow_methods=["*"], 
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
