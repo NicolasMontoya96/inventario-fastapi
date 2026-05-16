@@ -31,6 +31,10 @@ class CompraCreate(SQLModel):
         if not self.proveedor_id and not self.proveedor_nuevo:
             raise ValueError("Debes proporcionar un proveedor o los datos de proveedor_nuevo")
         return self
+    
+# 1. Agrega este esquema ligero arriba de CompraResponse
+class ProveedorMin(SQLModel):
+    nombre_empresa: str
 
 class CompraResponse(SQLModel):
     id: int
@@ -38,7 +42,5 @@ class CompraResponse(SQLModel):
     fecha: datetime
     numero_factura: str
     total: Decimal
-    
-    # Aquí es donde ocurre la magia relacional:
-    # FastAPI buscará los detalles asociados a esta compra y los meterá en esta lista automáticamente
     detalles: List[DetalleCompra] = []
+    proveedor: Optional[ProveedorMin] = None

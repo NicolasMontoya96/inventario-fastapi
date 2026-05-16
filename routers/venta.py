@@ -7,7 +7,7 @@ from db.schemas.ventaSchema import DetalleVentaCreate, VentaCreate, VentaRespons
 from db.schemas.clienteSchema import ClienteCreate
 from sqlalchemy.exc import IntegrityError
 from db.database import get_session
-
+from datetime import datetime # <-- NUEVA IMPORTACIÓN OBLIGATORIA PARA LA FECHA
 
 router = APIRouter(
     prefix="/ventas",
@@ -27,7 +27,7 @@ def obtener_historial_ventas(session: Session = Depends(get_session)):
 
 #---------------------------------------------------------------------------------------------------------------------
 
-@router.post("/", response_model=Ventas, status_code=201) # Cambiado a Ventas (o VentaResponse)
+@router.post("/", response_model=Ventas, status_code=201) 
 def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)):
     
     # 1. RESOLVER EL CLIENTE
@@ -77,7 +77,7 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
             session.add(db_producto)
         # --- FIN DEL BUCLE ---
 
-        # 3. CÁLCULOS FINANCIEROS (¡Ahora están fuera del bucle!)
+        # 3. CÁLCULOS FINANCIEROS 
         deuda_generada = total_acumulado - venta_data.cuota_inicial
 
         if venta_data.es_credito:
@@ -91,21 +91,25 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
             session.add(db_cliente)
             
         else:
-            # 3.5 VALIDACIÓN DE PAGO (NUEVA REGLA)
+            # 3.5 VALIDACIÓN DE PAGO 
             if venta_data.cuota_inicial != total_acumulado:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Error en el pago: Para ventas de contado, la cuota inicial ({venta_data.cuota_inicial}) debe ser igual al total ({total_acumulado})."
                 )
 
-        # 4. CREAR LA VENTA (EL ENCABEZADO)
+        # 4. CREAR LA VENTA (EL ENCABEZADO CON SOPORTE RETROACTIVO)
+        # Revisamos si el front mandó una fecha. Si no (o viene vacía), le clavamos datetime.now()
+        fecha_final_venta = venta_data.fecha if hasattr(venta_data, 'fecha') and venta_data.fecha else datetime.now()
+
         nueva_venta = Ventas(
             cliente_id=db_cliente.id,
             total_venta=total_acumulado,
             cuota_inicial=venta_data.cuota_inicial,
             monto_en_deuda=deuda_generada if venta_data.es_credito else Decimal("0.0"),
             es_credito=venta_data.es_credito,
-            metodo_pago=venta_data.metodo_pago
+            metodo_pago=venta_data.metodo_pago,
+            fecha=fecha_final_venta # <-- ¡INJECTAMOS LA FECHA DINÁMICA AQUÍ!
         )
             
         session.add(nueva_venta)
@@ -122,17 +126,10 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
         
         return nueva_venta
 
-    # Manejo de errores separado para no ocultar nuestras propias validaciones
+    # Manejo de errores separado
     except HTTPException:
         session.rollback()
         raise
     except Exception as e:
         session.rollback() 
         raise HTTPException(status_code=500, detail=f"Error al procesar la venta: {str(e)}")
-
-#---------------------------------------------------------------------------------------------
-    
-
-    
-
-                

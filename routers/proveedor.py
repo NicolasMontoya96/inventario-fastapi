@@ -9,7 +9,7 @@ router = APIRouter(prefix="/proveedores",
                    tags=["proveedores"],
                    responses={404: {"message": "No encontrado"}})
 
-@router.get("/", response_model=list[ProveedorList])
+@router.get("/", response_model=list[ProveedorResponse])
 def proveedores(session: Session = Depends(get_session)):
     # Ejecutamos y retornamos de una vez
     return session.exec(select(Proveedor)).all()

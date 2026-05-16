@@ -7,6 +7,10 @@ from datetime import datetime
 from db.models import DetalleVenta
 
 
+class ClienteMin(SQLModel):
+    nombre: str
+    apellido: Optional[str] = None
+
 class VentaResponse(SQLModel):
     id: int
     fecha: datetime
@@ -17,6 +21,7 @@ class VentaResponse(SQLModel):
     es_credito: bool
     metodo_pago: str
     detalles: List[DetalleVenta] = []
+    cliente: Optional[ClienteMin] = None
 
 class DetalleVentaCreate(SQLModel):
     producto_id: int
@@ -34,6 +39,9 @@ class VentaCreate(SQLModel):
     cuota_inicial: Decimal = Decimal("0.0")
     metodo_pago: str
     items: List[DetalleVentaCreate]
+    
+    # ¡AQUÍ ESTÁ EL AJUSTE! Campo opcional para habilitar el registro retroactivo
+    fecha: Optional[datetime] = None 
 
     # Validación de seguridad: debe venir uno de los dos
     @model_validator(mode="after")

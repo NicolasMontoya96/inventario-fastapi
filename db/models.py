@@ -66,6 +66,7 @@ class Ventas(SQLModel, table=True):
 
     
     detalles: list["DetalleVenta"] = Relationship(back_populates="venta")
+    cliente: Optional["Cliente"] = Relationship()
 
 class DetalleVenta(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -83,6 +84,8 @@ class Compra(SQLModel, table=True):
     fecha: datetime
     numero_factura: str
     total: Decimal
+    proveedor: Optional["Proveedor"] = Relationship()
+    detalles: list["DetalleCompra"] = Relationship(back_populates="compra")
 
 class DetalleCompra(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -90,6 +93,8 @@ class DetalleCompra(SQLModel, table=True):
     producto_id: int = Field(foreign_key="producto.id")
     cantidad: int
     precio_compra:Decimal
+    compra: "Compra" = Relationship(back_populates="detalles")
+    
 
 
 class Abono(SQLModel, table=True):
