@@ -46,7 +46,6 @@ class Producto(SQLModel, table=True):
     descripcion: Optional[str] = None
     precio_compra: Decimal = Field(default=Decimal("0.0")) 
     precio_venta: Decimal
-    precio_costo: Decimal = Field(default=Decimal("0.0"))
     stock: int = Field(default=0)
     especificaciones: dict = Field(default={}, sa_column=Column(JSONB))
     proveedor_id: int = Field(foreign_key="proveedor.id")

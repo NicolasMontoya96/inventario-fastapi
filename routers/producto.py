@@ -33,10 +33,8 @@ def create_producto(producto: ProductoCreate, session: Session= Depends(get_sess
     # Si el producto nace con existencias físicas en el stock, creamos su factura de compra
     if db_producto.stock > 0:
         try:
-            # Multiplicamos el stock inicial por el precio_costo real enviado desde el formulario
-            total_invertido = db_producto.stock * db_producto.precio_costo
-            
-            # Generamos de forma automática el encabezado de la compra para el proveedor
+            total_invertido = db_producto.stock * db_producto.precio_compra
+
             nueva_compra = Compra(
                 proveedor_id=db_producto.proveedor_id,
                 fecha=datetime.now(),
@@ -46,13 +44,12 @@ def create_producto(producto: ProductoCreate, session: Session= Depends(get_sess
             session.add(nueva_compra)
             session.commit()
             session.refresh(nueva_compra)
-            
-            # Guardamos el desglose del artículo comprado vinculándolo a la factura anterior
+
             nuevo_detalle_compra = DetalleCompra(
                 compra_id=nueva_compra.id,
                 producto_id=db_producto.id,
                 cantidad=db_producto.stock,
-                precio_compra=db_producto.precio_costo
+                precio_compra=db_producto.precio_compra
             )
             session.add(nuevo_detalle_compra)
             session.commit()
