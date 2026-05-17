@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
-from db.models import Producto, Proveedor, Categoria, Cliente, Ventas, Abono
-from db.schemas.clienteSchema import ClienteCreate, ClienteResponse, ClienteUpdate, ClienteBase, AbonoCreate
+from sqlalchemy import func
 from db.database import get_session
 from sqlalchemy.exc import IntegrityError
 from typing import List
+
+from db.models import Producto, Proveedor, Categoria, Cliente, Ventas, Abono
+from db.schemas.clienteSchema import ClienteCreate, ClienteResponse, ClienteUpdate, ClienteBase, AbonoCreate
 
 # --- IMPORTACIONES PARA REPORTES (EXCEL Y PDF SEGURO) ---
 from io import BytesIO
@@ -83,27 +85,23 @@ def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session))
     if not db_cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     
-    # Nota: Tu esquema 'AbonoCreate' probablemente usa 'monto_pagado'. 
-    # Validamos contra el saldo en deuda actual del cliente
     if abono.monto_pagado > db_cliente.saldo_deuda:
         raise HTTPException(
             status_code=400, 
             detail=f"El cliente solo debe ${db_cliente.saldo_deuda}. No puede abonar ${abono.monto_pagado}"
         )
         
-    # 1. Descontamos el dinero de la deuda del cliente
     db_cliente.saldo_deuda -= abono.monto_pagado
     
-    # 2. Instanciamos tu modelo real 'Abono' con sus propiedades exactas
     nuevo_registro_abono = Abono(
         cliente_id=abono.cliente_id,
-        monto_abonado=abono.monto_pagado, # Mapea el valor al campo 'monto_abonado' de tu DB
+        monto_abonado=abono.monto_pagado, 
         fecha=datetime.now(),
         notas="Abono asentado desde Estado de Cuenta Integral"
     )
     
     session.add(db_cliente)
-    session.add(nuevo_registro_abono) # Guardamos el movimiento en su tabla limpia
+    session.add(nuevo_registro_abono) 
     session.commit()
     session.refresh(db_cliente)
     
@@ -115,22 +113,12 @@ def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session))
 
 
 # ===============================================================================
-# CONSULTA HISTÓRICA DE ABONOS (AJUSTADO A TU MODELO REAL 'Abono')
+# CONSULTA HISTÓRICA DE ABONOS 
 # ===============================================================================
 @router.get("/{id}/abonos")
 def obtener_abonos_cliente(id: int, session: Session = Depends(get_session)):
-    # Ejecuta la consulta real apuntando a la clase 'Abono'
     statement = select(Abono).where(Abono.cliente_id == id).order_by(Abono.fecha.desc())
     return session.exec(statement).all()
-
-#----------------------------------------------------------------------------------------------------
-# CORREGIDO: Eliminado el return [] quemado; ahora consulta los registros reales de la BD
-#----------------------------------------------------------------------------------------------------
-@router.get("/{id}/abonos")
-def obtener_abonos_cliente(id: int, session: Session = Depends(get_session)):
-    statement = select(Abonos).where(Abonos.cliente_id == id).order_by(Abonos.fecha.desc())
-    return session.exec(statement).all()
-#----------------------------------------------------------------------------------------------------
 
 
 # Función auxiliar interna para limpiar acentos en los archivos PDF generados con FPDF
@@ -212,6 +200,7 @@ def descargar_excel_cliente(id: int, session: Session = Depends(get_session)):
         celda_total = ws_movs.cell(row=idx, column=6, value=float(v.total_venta))
         celda_total.number_format = '$#,##0'
         celda_total.alignment = Alignment(horizontal="right")
+        celda_total.font = font_regular
         
         for col in range(2, 7):
             ws_movs.cell(row=idx, column=col).border = border_thin
@@ -229,7 +218,7 @@ def descargar_excel_cliente(id: int, session: Session = Depends(get_session)):
     return StreamingResponse(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=Estado_Cuenta_{db_cliente.nombre}.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename=Establishment_Cuenta_{db_cliente.nombre}.xlsx"}
     )
 
 
@@ -329,7 +318,7 @@ def descargar_pdf_cliente(id: int, session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# 3. REPORTE INVENTARIO GLOBAL - EXCEL 
+# 3. REPORTE INVENTARIO GLOBAL - EXCEL (CORREGIDO DE RAÍZ A PRECIO DE COMPRA)
 # ===============================================================================
 @router.get("/global/inventario-excel")
 def excel_valorizacion_inventario(session: Session = Depends(get_session)):
@@ -356,7 +345,8 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
     ws['B3'] = f"Corte realizado el: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}"
     ws['B3'].font = Font(name="Arial", size=10, italic=True, color="64748B")
 
-    headers = ["ID Ref", "Nombre del Artículo", "Categoría", "Stock Físico", "Precio Venta Unit.", "Valorización Estimada"]
+    # MODIFICADO: Ajustados los encabezados a Costo Real e Inversión
+    headers = ["ID Ref", "Nombre del Artículo", "Categoría", "Stock Físico", "Costo Unit. (Compra)", "Inversión Total"]
     for col_idx, text in enumerate(headers, start=2):
         cell = ws.cell(row=5, column=col_idx, value=text)
         cell.font = font_header
@@ -367,7 +357,8 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
     total_capital_estimado = 0.0
 
     for idx, p in enumerate(productos, start=6):
-        valor_total_item = p.stock * float(p.precio_venta)
+        # MODIFICADO: Multiplica por precio_compra (Costo de adquisición)
+        valor_total_item = p.stock * float(p.precio_compra)
         total_unidades += p.stock
         total_capital_estimado += valor_total_item
 
@@ -379,7 +370,8 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
         c_stock.number_format = '#,##0" unid."'
         c_stock.alignment = Alignment(horizontal="center")
 
-        c_precio = ws.cell(row=idx, column=6, value=float(p.precio_venta))
+        # MODIFICADO: Mapea el precio_compra en la celda
+        c_precio = ws.cell(row=idx, column=6, value=float(p.precio_compra))
         c_precio.number_format = '$#,##0'
         c_precio.alignment = Alignment(horizontal="right")
 
@@ -420,7 +412,7 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# 4. REPORTE INVENTARIO GLOBAL - PDF (FLEXIBLE)
+# 4. REPORTE INVENTARIO GLOBAL - PDF (CORREGIDO DE RAÍZ A PRECIO DE COMPRA)
 # ===============================================================================
 @router.get("/global/inventario-pdf")
 def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
@@ -449,8 +441,9 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
     pdf.cell(55, 9, "DESCRIPCION", border=1, align="L", fill=True)
     pdf.cell(30, 9, "CATEGORIA", border=1, align="C", fill=True)
     pdf.cell(25, 9, "STOCK", border=1, align="C", fill=True)
-    pdf.cell(25, 9, "P. VENTA", border=1, align="C", fill=True)
-    pdf.cell(25, 9, "VALOR TOTAL", border=1, align="C", fill=True)
+    # MODIFICADO: Títulos alineados a Costo Real de Inversión
+    pdf.cell(25, 9, "COSTO UNIT.", border=1, align="C", fill=True)
+    pdf.cell(25, 9, "TOTAL COSTO", border=1, align="C", fill=True)
     pdf.ln(9)
     
     pdf.set_text_color(51, 65, 85)
@@ -460,7 +453,8 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
     total_valor = 0.0
     
     for idx, p in enumerate(productos):
-        subtotal = p.stock * float(p.precio_venta)
+        # MODIFICADO: Cálculo estructurado sobre el precio_compra
+        subtotal = p.stock * float(p.precio_compra)
         total_unidades += p.stock
         total_valor += subtotal
         
@@ -474,7 +468,8 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
         pdf.cell(55, 8, nombre_p, border=1, align="L", fill=fill_bg)
         pdf.cell(30, 8, cat_p, border=1, align="C", fill=fill_bg)
         pdf.cell(25, 8, f"{p.stock} u.", border=1, align="C", fill=fill_bg)
-        pdf.cell(25, 8, f"${float(p.precio_venta):,.0f}", border=1, align="R", fill=fill_bg)
+        # MODIFICADO: Inyecta el precio_compra en el renglón
+        pdf.cell(25, 8, f"${float(p.precio_compra):,.0f}", border=1, align="R", fill=fill_bg)
         pdf.cell(25, 8, f"${subtotal:,.0f}", border=1, align="R", fill=fill_bg)
         pdf.ln(8)
         

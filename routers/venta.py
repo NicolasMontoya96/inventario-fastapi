@@ -7,7 +7,7 @@ from db.schemas.ventaSchema import DetalleVentaCreate, VentaCreate, VentaRespons
 from db.schemas.clienteSchema import ClienteCreate
 from sqlalchemy.exc import IntegrityError
 from db.database import get_session
-from datetime import datetime # <-- NUEVA IMPORTACIÓN OBLIGATORIA PARA LA FECHA
+from datetime import datetime
 
 router = APIRouter(
     prefix="/ventas",
@@ -44,7 +44,6 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
         session.flush() 
         session.refresh(db_cliente)
         
-    # Validación extra por si alguien manda el JSON sin cliente_id y sin cliente_nuevo
     if not db_cliente:
          raise HTTPException(status_code=400, detail="Debe especificar un cliente_id o los datos de un cliente_nuevo")
 
@@ -66,8 +65,10 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
             subtotal = item.precio_unitario * item.cantidad
             total_acumulado += subtotal
 
+            # MODIFICADO: Ahora el backend congela el nombre en la factura
             nuevo_detalle = DetalleVenta(
                 producto_id=db_producto.id,
+                nombre_producto=db_producto.nombre, # 👈 SOLUCIÓN DE RAÍZ INMUTABLE
                 cantidad=item.cantidad,
                 precio_unitario=item.precio_unitario
             )
@@ -86,7 +87,6 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
                     status_code=400,
                     detail="La cuota inicial no puede ser mayor al total en una venta a crédito"
                 )
-            # Sumamos la nueva deuda al saldo actual del cliente
             db_cliente.saldo_deuda += deuda_generada
             session.add(db_cliente)
             
@@ -99,7 +99,6 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
                 )
 
         # 4. CREAR LA VENTA (EL ENCABEZADO CON SOPORTE RETROACTIVO)
-        # Revisamos si el front mandó una fecha. Si no (o viene vacía), le clavamos datetime.now()
         fecha_final_venta = venta_data.fecha if hasattr(venta_data, 'fecha') and venta_data.fecha else datetime.now()
 
         nueva_venta = Ventas(
@@ -109,7 +108,7 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
             monto_en_deuda=deuda_generada if venta_data.es_credito else Decimal("0.0"),
             es_credito=venta_data.es_credito,
             metodo_pago=venta_data.metodo_pago,
-            fecha=fecha_final_venta # <-- ¡INJECTAMOS LA FECHA DINÁMICA AQUÍ!
+            fecha=fecha_final_venta 
         )
             
         session.add(nueva_venta)
@@ -120,13 +119,11 @@ def crear_venta(venta_data: VentaCreate, session: Session = Depends(get_session)
             detalle.venta_id = nueva_venta.id
             session.add(detalle)
 
-        # EL MOMENTO DE LA VERDAD
         session.commit()
         session.refresh(nueva_venta)
         
         return nueva_venta
 
-    # Manejo de errores separado
     except HTTPException:
         session.rollback()
         raise

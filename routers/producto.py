@@ -12,8 +12,7 @@ router = APIRouter(
 
 @router.get("/", response_model=list[ProductoList])
 def productos(session: Session = Depends(get_session)):
-     return session.exec(select(Producto)).all()
-
+    return session.exec(select(Producto).where(Producto.activo == True)).all()
 
 #------------------------------------------------------------------------------------------------
 @router.post("/", response_model=ProductoResponse, status_code=201)
@@ -91,7 +90,9 @@ def eliminar_producto(id: int, session: Session = Depends(get_session)):
     db_producto = session.get(Producto, id)
     if not db_producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+    db_producto.activo = False
     
-    session.delete(db_producto)
+    session.add(db_producto)
     session.commit()
-    return {"message": f"Producto '{db_producto.nombre}' eliminado correctamente"}
+    
+    return {"message": f"Producto '{db_producto.nombre}' ocultado del catálogo correctamente"}

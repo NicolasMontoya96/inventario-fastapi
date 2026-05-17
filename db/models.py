@@ -48,6 +48,7 @@ class Producto(SQLModel, table=True):
     precio_venta: Decimal
     stock: int = Field(default=0)
     especificaciones: dict = Field(default={}, sa_column=Column(JSONB))
+    activo: bool = Field(default=True)
     proveedor_id: int = Field(foreign_key="proveedor.id")
     categoria_id: int = Field(foreign_key="categoria.id")
 
@@ -74,6 +75,7 @@ class DetalleVenta(SQLModel, table=True):
     producto_id: int = Field(foreign_key="producto.id")
     cantidad: int
     precio_unitario: Decimal
+    nombre_producto: str = Field(default="")
 
     # Relación inversa
     venta: "Ventas" = Relationship(back_populates="detalles")
@@ -87,12 +89,16 @@ class Compra(SQLModel, table=True):
     proveedor: Optional["Proveedor"] = Relationship()
     detalles: list["DetalleCompra"] = Relationship(back_populates="compra")
 
+
 class DetalleCompra(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     compra_id: int = Field(foreign_key="compra.id")
     producto_id: int = Field(foreign_key="producto.id")
+
+    # Guardamos el nombre exacto del artículo al momento de la transacción
+    nombre_producto: Optional[str] = Field(default=None, max_length=150)
     cantidad: int
-    precio_compra:Decimal
+    precio_compra: Decimal = Field(default=0, decimal_places=2)
     compra: "Compra" = Relationship(back_populates="detalles")
     
 

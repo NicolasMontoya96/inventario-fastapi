@@ -55,7 +55,6 @@ def crear_compra(compra_data: CompraCreate, session: Session = Depends(get_sessi
         for item in compra_data.items:
             db_producto = session.get(Producto, item.producto_id)
             
-            
             if not db_producto:
                 raise HTTPException(status_code=404, detail=f"Producto con ID {item.producto_id} no encontrado")
             
@@ -63,9 +62,10 @@ def crear_compra(compra_data: CompraCreate, session: Session = Depends(get_sessi
             subtotal = item.precio_compra * item.cantidad
             total_factura += subtotal
             
-            # Creamos el modelo de base de datos
+            # Creamos el modelo de base de datos CON EL NOMBRE CONGELADO DE RAÍZ
             nuevo_detalle = DetalleCompra(
                 producto_id=db_producto.id,
+                nombre_producto=db_producto.nombre,  # <--- SOLUCIÓN DE RAÍZ AQUÍ 🚀
                 cantidad=item.cantidad,
                 precio_compra=item.precio_compra
             )
@@ -107,6 +107,5 @@ def crear_compra(compra_data: CompraCreate, session: Session = Depends(get_sessi
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Error al procesar la compra: {str(e)}")
-            
             
 

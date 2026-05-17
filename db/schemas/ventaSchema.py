@@ -6,10 +6,18 @@ from pydantic import BaseModel, model_validator
 from datetime import datetime
 from db.models import DetalleVenta
 
-
 class ClienteMin(SQLModel):
     nombre: str
     apellido: Optional[str] = None
+
+# NUEVO: Esquema de salida para el detalle, asegurando la entrega de nombre_producto
+class DetalleVentaResponse(SQLModel):
+    id: Optional[int] = None
+    venta_id: int
+    producto_id: int
+    nombre_producto: str = ""  # 👈 ESTA LÍNEA ES LA QUE LE DA PERMISO DE VIAJAR AL FRONTEND
+    cantidad: int
+    precio_unitario: Decimal
 
 class VentaResponse(SQLModel):
     id: int
@@ -20,13 +28,15 @@ class VentaResponse(SQLModel):
     monto_en_deuda: Decimal
     es_credito: bool
     metodo_pago: str
-    detalles: List[DetalleVenta] = []
+    # MODIFICADO: Ahora usa el esquema de respuesta que no filtra el nombre
+    detalles: List[DetalleVentaResponse] = []
     cliente: Optional[ClienteMin] = None
 
 class DetalleVentaCreate(SQLModel):
     producto_id: int
     cantidad: int
     precio_unitario: Decimal
+    nombre_producto: Optional[str] = ""  # NUEVO: Evita errores si el front no lo manda en el body
 
 class VentaCreate(SQLModel):
     # Opción 1: El cliente ya existe
@@ -40,7 +50,7 @@ class VentaCreate(SQLModel):
     metodo_pago: str
     items: List[DetalleVentaCreate]
     
-    # ¡AQUÍ ESTÁ EL AJUSTE! Campo opcional para habilitar el registro retroactivo
+    # Campo opcional para habilitar el registro retroactivo
     fecha: Optional[datetime] = None 
 
     # Validación de seguridad: debe venir uno de los dos
