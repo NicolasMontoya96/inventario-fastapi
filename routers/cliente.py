@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
-from db.models import Producto, Proveedor, Categoria, Cliente, Ventas 
+from db.models import Producto, Proveedor, Categoria, Cliente, Ventas, Abono
 from db.schemas.clienteSchema import ClienteCreate, ClienteResponse, ClienteUpdate, ClienteBase, AbonoCreate
 from db.database import get_session
 from sqlalchemy.exc import IntegrityError
@@ -74,21 +74,36 @@ def actualizar_cliente(id: int, cliente_data: ClienteUpdate, session: Session = 
     return db_cliente
 
 
+# ===============================================================================
+# REGISTRO DE ABONOS (MÉTODO AJUSTADO A TU MODELO REAL 'Abono')
+# ===============================================================================
 @router.post("/abonos", status_code=201)
 def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session)):
     db_cliente = session.get(Cliente, abono.cliente_id)
     if not db_cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     
+    # Nota: Tu esquema 'AbonoCreate' probablemente usa 'monto_pagado'. 
+    # Validamos contra el saldo en deuda actual del cliente
     if abono.monto_pagado > db_cliente.saldo_deuda:
         raise HTTPException(
             status_code=400, 
             detail=f"El cliente solo debe ${db_cliente.saldo_deuda}. No puede abonar ${abono.monto_pagado}"
         )
         
+    # 1. Descontamos el dinero de la deuda del cliente
     db_cliente.saldo_deuda -= abono.monto_pagado
     
+    # 2. Instanciamos tu modelo real 'Abono' con sus propiedades exactas
+    nuevo_registro_abono = Abono(
+        cliente_id=abono.cliente_id,
+        monto_abonado=abono.monto_pagado, # Mapea el valor al campo 'monto_abonado' de tu DB
+        fecha=datetime.now(),
+        notas="Abono asentado desde Estado de Cuenta Integral"
+    )
+    
     session.add(db_cliente)
+    session.add(nuevo_registro_abono) # Guardamos el movimiento en su tabla limpia
     session.commit()
     session.refresh(db_cliente)
     
@@ -99,9 +114,23 @@ def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session))
     }
 
 
+# ===============================================================================
+# CONSULTA HISTÓRICA DE ABONOS (AJUSTADO A TU MODELO REAL 'Abono')
+# ===============================================================================
 @router.get("/{id}/abonos")
 def obtener_abonos_cliente(id: int, session: Session = Depends(get_session)):
-    return []
+    # Ejecuta la consulta real apuntando a la clase 'Abono'
+    statement = select(Abono).where(Abono.cliente_id == id).order_by(Abono.fecha.desc())
+    return session.exec(statement).all()
+
+#----------------------------------------------------------------------------------------------------
+# CORREGIDO: Eliminado el return [] quemado; ahora consulta los registros reales de la BD
+#----------------------------------------------------------------------------------------------------
+@router.get("/{id}/abonos")
+def obtener_abonos_cliente(id: int, session: Session = Depends(get_session)):
+    statement = select(Abonos).where(Abonos.cliente_id == id).order_by(Abonos.fecha.desc())
+    return session.exec(statement).all()
+#----------------------------------------------------------------------------------------------------
 
 
 # Función auxiliar interna para limpiar acentos en los archivos PDF generados con FPDF
@@ -300,7 +329,7 @@ def descargar_pdf_cliente(id: int, session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# NUEVO 3: REPORTE INVENTARIO GLOBAL - EXCEL 
+# 3. REPORTE INVENTARIO GLOBAL - EXCEL 
 # ===============================================================================
 @router.get("/global/inventario-excel")
 def excel_valorizacion_inventario(session: Session = Depends(get_session)):
@@ -391,7 +420,7 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# NUEVO 4: REPORTE INVENTARIO GLOBAL - PDF (FLEXIBLE)
+# 4. REPORTE INVENTARIO GLOBAL - PDF (FLEXIBLE)
 # ===============================================================================
 @router.get("/global/inventario-pdf")
 def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
@@ -460,19 +489,18 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
     pdf_bytes = pdf.output()
     return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=Valorizacion_Inventario_Global.pdf"})
 
+
 # ===============================================================================
-# NUEVO 5: REPORTE DE VENTAS POR RANGO DE FECHAS - EXCEL
+# 5. REPORTE DE VENTAS POR RANGO DE FECHAS - EXCEL
 # ===============================================================================
 @router.get("/global/ventas-excel")
 def excel_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session = Depends(get_session)):
     try:
-        # Convertimos los textos del frontend a objetos datetime reales de Python
         f_inicio = datetime.strptime(fecha_inicio, "%Y-%m-%d")
         f_fin = datetime.strptime(fecha_fin, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
     except ValueError:
         raise HTTPException(status_code=400, detail="Formato de fecha invalido. Use YYYY-MM-DD")
 
-    # Consultamos las ventas dentro del rango elegido
     statement = select(Ventas).where(Ventas.fecha >= f_inicio, Ventas.fecha <= f_fin).order_by(Ventas.fecha.asc())
     historial_ventas = session.exec(statement).all()
 
@@ -481,7 +509,6 @@ def excel_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session 
     ws.title = "Balance de Ventas"
     ws.views.sheetView[0].showGridLines = True
 
-    # Estilos de diseño premium
     font_title = Font(name="Arial", size=14, bold=True, color="1E293B")
     font_bold = Font(name="Arial", size=11, bold=True, color="1E293B")
     font_regular = Font(name="Arial", size=11, color="334155")
@@ -520,7 +547,6 @@ def excel_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session 
         for col in range(2, 7):
             ws.cell(row=idx, column=col).border = border_thin
 
-    # Fila de Cierre
     tot_row = len(historial_ventas) + 6
     ws.cell(row=tot_row, column=2, value="TOTAL INGRESOS BRUTOS").font = font_bold
     ws.cell(row=tot_row, column=6, value=total_dinero_ventas).font = Font(name="Arial", size=11, bold=True, color="16A34A")
@@ -543,7 +569,7 @@ def excel_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session 
 
 
 # ===============================================================================
-# NUEVO 6: REPORTE DE VENTAS POR RANGO DE FECHAS - PDF 
+# 6. REPORTE DE VENTAS POR RANGO DE FECHAS - PDF 
 # ===============================================================================
 @router.get("/global/ventas-pdf")
 def pdf_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session = Depends(get_session)):
@@ -569,7 +595,6 @@ def pdf_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session = 
     pdf.cell(0, 5, f"Periodo: {f_inicio.strftime('%d/%m/%Y')} al {f_fin.strftime('%d/%m/%Y')} - INVENTARIO PRO", align="L")
     pdf.ln(15)
     
-    # Encabezados de tabla
     pdf.set_text_color(255, 255, 255)
     pdf.set_fill_color(30, 41, 59)
     pdf.set_font("Arial", "B", 9)
@@ -609,12 +634,12 @@ def pdf_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session = 
     pdf_bytes = pdf.output()
     return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=Reporte_Ventas_Global.pdf"})
 
+
 # ===============================================================================
-# NUEVO 7: REPORTE CONSOLIDADO DE DEUDORES (CARTERA) - EXCEL
+# 7. REPORTE CONSOLIDADO DE DEUDORES (CARTERA) - EXCEL
 # ===============================================================================
 @router.get("/global/deudores-excel")
 def excel_consolidado_deudores(session: Session = Depends(get_session)):
-    # Extraemos solo clientes con deuda mayor a 0, ordenados de mayor a menor
     statement = select(Cliente).where(Cliente.saldo_deuda > 0).order_by(Cliente.saldo_deuda.desc())
     deudores = session.exec(statement).all()
 
@@ -662,7 +687,6 @@ def excel_consolidado_deudores(session: Session = Depends(get_session)):
         for col in range(2, 7):
             ws.cell(row=idx, column=col).border = border_thin
 
-    # Fila de Cierre Financiero
     tot_row = len(deudores) + 6
     ws.cell(row=tot_row, column=2, value="TOTAL CARTERA POR RECUPERAR").font = font_bold
     ws.cell(row=tot_row, column=6, value=total_cartera_recuperar).font = Font(name="Arial", size=11, bold=True, color="B91C1C")
@@ -685,7 +709,7 @@ def excel_consolidado_deudores(session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# NUEVO 8: REPORTE CONSOLIDADO DE DEUDORES (CARTERA) - PDF
+# 8. REPORTE CONSOLIDADO DE DEUDORES (CARTERA) - PDF
 # ===============================================================================
 @router.get("/global/deudores-pdf")
 def pdf_consolidado_deudores(session: Session = Depends(get_session)):
@@ -705,7 +729,6 @@ def pdf_consolidado_deudores(session: Session = Depends(get_session)):
     pdf.cell(0, 5, f"Control de Saldos en Mora y Cuentas por Cobrar - Corte: {datetime.now().strftime('%d/%m/%Y')}", align="L")
     pdf.ln(15)
     
-    # Encabezados de Tabla Cartera
     pdf.set_text_color(255, 255, 255)
     pdf.set_fill_color(30, 41, 59)
     pdf.set_font("Arial", "B", 9)
@@ -736,7 +759,6 @@ def pdf_consolidado_deudores(session: Session = Depends(get_session)):
         pdf.cell(30, 8, tel_c, border=1, align="C", fill=fill_bg)
         pdf.cell(50, 8, c.email, border=1, align="L", fill=fill_bg)
         
-        # Resaltamos el saldo en deuda en color rojo dentro de la celda
         pdf.set_text_color(185, 28, 28)
         pdf.set_font("Arial", "B", 9)
         pdf.cell(30, 8, f"${saldo_val:,.0f}", border=1, align="R", fill=fill_bg)
@@ -745,10 +767,9 @@ def pdf_consolidado_deudores(session: Session = Depends(get_session)):
         pdf.set_font("Arial", "", 9)
         pdf.ln(8)
         
-    # Fila final de balance consolidado de cartera
     pdf.set_font("Arial", "B", 10)
-    pdf.set_fill_color(254, 242, 242) # Fondo rojizo tenue de alerta
-    pdf.set_text_color(153, 27, 27) # Texto rojo sangre
+    pdf.set_fill_color(254, 242, 242) 
+    pdf.set_text_color(153, 27, 27) 
     pdf.cell(150, 9, "TOTAL GENERAL DE CARTERA POR RECUPERAR  ", border=1, align="R", fill=True)
     pdf.cell(30, 9, f"${total_cartera:,.0f}", border=1, align="R", fill=True)
     pdf.ln(9)
