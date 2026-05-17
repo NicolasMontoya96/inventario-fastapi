@@ -26,6 +26,9 @@ class ProductoList(SQLModel):
     precio_costo: Decimal # MODIFICADO: Añadido aquí para que lo puedas ver/mapear en las tablas de listados
     precio_venta: Decimal 
     stock: int
+    # 👇 ¡AÑADE ESTAS DOS LÍNEAS AQUÍ!
+    categoria_id: int
+    proveedor_id: int
 
 class ProductoResponse(ProductoBase):
     id: int 
