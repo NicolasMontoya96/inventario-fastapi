@@ -32,7 +32,6 @@ def clientes(session: Session = Depends(get_session)):
 @router.post("/", response_model=ClienteResponse, status_code=201)
 def crear_cliente(cliente: ClienteCreate, session: Session= Depends(get_session)):
     
-    # 1. Validar duplicados SOLO si el cliente proporcionó un email
     if cliente.email:
         statement = select(Cliente).where(Cliente.email == cliente.email)
         email_existente = session.exec(statement).first()
@@ -43,7 +42,6 @@ def crear_cliente(cliente: ClienteCreate, session: Session= Depends(get_session)
                 detail=f"Error: El email '{cliente.email}' ya está registrado."
             )
     
-    # 2. Creación normal
     db_cliente = Cliente.model_validate(cliente)
     try:
         session.add(db_cliente)
@@ -67,11 +65,9 @@ def actualizar_cliente(id: int, cliente_data: ClienteUpdate, session: Session = 
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     datos_nuevos = cliente_data.model_dump(exclude_unset=True)
     
-    # Si la propiedad "email" viene en los datos y es un string vacío o puro espacio, se vuelve None.
     if "email" in datos_nuevos and isinstance(datos_nuevos["email"], str):
         if datos_nuevos["email"].strip() == "":
             datos_nuevos["email"] = None
-    # -------------------------------------------------------------------------
 
     db_cliente.sqlmodel_update(datos_nuevos)
     session.add(db_cliente)
@@ -87,7 +83,7 @@ def actualizar_cliente(id: int, cliente_data: ClienteUpdate, session: Session = 
 
 
 # ===============================================================================
-# REGISTRO DE ABONOS (MÉTODO AJUSTADO A TU MODELO REAL 'Abono')
+# REGISTRO DE ABONOS
 # ===============================================================================
 @router.post("/abonos", status_code=201)
 def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session)):
@@ -123,7 +119,28 @@ def registrar_abono(abono: AbonoCreate, session: Session = Depends(get_session))
 
 
 # ===============================================================================
-# CONSULTA HISTÓRICA DE ABONOS 
+# TODOS LOS ABONOS — ENDPOINT GLOBAL PARA MOVIMIENTOSVIEW
+# ⚠️ DEBE IR ANTES DE /{id}/abonos para que FastAPI no confunda "abonos" con un ID
+# ===============================================================================
+@router.get("/abonos/todos")
+def obtener_todos_los_abonos(session: Session = Depends(get_session)):
+    statement = select(Abono, Cliente).join(Cliente, Abono.cliente_id == Cliente.id).order_by(Abono.fecha.desc())
+    resultados = session.exec(statement).all()
+    return [
+        {
+            "id": abono.id,
+            "fecha": abono.fecha,
+            "cliente_id": abono.cliente_id,
+            "cliente_nombre": f"{cliente.nombre} {cliente.apellido or ''}".strip(),
+            "monto_abonado": float(abono.monto_abonado),
+            "notas": abono.notas
+        }
+        for abono, cliente in resultados
+    ]
+
+
+# ===============================================================================
+# ABONOS POR CLIENTE INDIVIDUAL
 # ===============================================================================
 @router.get("/{id}/abonos")
 def obtener_abonos_cliente(id: int, session: Session = Depends(get_session)):
@@ -328,7 +345,7 @@ def descargar_pdf_cliente(id: int, session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# 3. REPORTE INVENTARIO GLOBAL - EXCEL (CORREGIDO DE RAÍZ A PRECIO DE COMPRA)
+# 3. REPORTE INVENTARIO GLOBAL - EXCEL
 # ===============================================================================
 @router.get("/global/inventario-excel")
 def excel_valorizacion_inventario(session: Session = Depends(get_session)):
@@ -355,7 +372,6 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
     ws['B3'] = f"Corte realizado el: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}"
     ws['B3'].font = Font(name="Arial", size=10, italic=True, color="64748B")
 
-    # MODIFICADO: Ajustados los encabezados a Costo Real e Inversión
     headers = ["ID Ref", "Nombre del Artículo", "Categoría", "Stock Físico", "Costo Unit. (Compra)", "Inversión Total"]
     for col_idx, text in enumerate(headers, start=2):
         cell = ws.cell(row=5, column=col_idx, value=text)
@@ -367,7 +383,6 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
     total_capital_estimado = 0.0
 
     for idx, p in enumerate(productos, start=6):
-        # MODIFICADO: Multiplica por precio_compra (Costo de adquisición)
         valor_total_item = p.stock * float(p.precio_compra)
         total_unidades += p.stock
         total_capital_estimado += valor_total_item
@@ -380,7 +395,6 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
         c_stock.number_format = '#,##0" unid."'
         c_stock.alignment = Alignment(horizontal="center")
 
-        # MODIFICADO: Mapea el precio_compra en la celda
         c_precio = ws.cell(row=idx, column=6, value=float(p.precio_compra))
         c_precio.number_format = '$#,##0'
         c_precio.alignment = Alignment(horizontal="right")
@@ -422,7 +436,7 @@ def excel_valorizacion_inventario(session: Session = Depends(get_session)):
 
 
 # ===============================================================================
-# 4. REPORTE INVENTARIO GLOBAL - PDF (CORREGIDO DE RAÍZ A PRECIO DE COMPRA)
+# 4. REPORTE INVENTARIO GLOBAL - PDF
 # ===============================================================================
 @router.get("/global/inventario-pdf")
 def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
@@ -451,7 +465,6 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
     pdf.cell(55, 9, "DESCRIPCION", border=1, align="L", fill=True)
     pdf.cell(30, 9, "CATEGORIA", border=1, align="C", fill=True)
     pdf.cell(25, 9, "STOCK", border=1, align="C", fill=True)
-    # MODIFICADO: Títulos alineados a Costo Real de Inversión
     pdf.cell(25, 9, "COSTO UNIT.", border=1, align="C", fill=True)
     pdf.cell(25, 9, "TOTAL COSTO", border=1, align="C", fill=True)
     pdf.ln(9)
@@ -463,7 +476,6 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
     total_valor = 0.0
     
     for idx, p in enumerate(productos):
-        # MODIFICADO: Cálculo estructurado sobre el precio_compra
         subtotal = p.stock * float(p.precio_compra)
         total_unidades += p.stock
         total_valor += subtotal
@@ -478,7 +490,6 @@ def pdf_valorizacion_inventario(session: Session = Depends(get_session)):
         pdf.cell(55, 8, nombre_p, border=1, align="L", fill=fill_bg)
         pdf.cell(30, 8, cat_p, border=1, align="C", fill=fill_bg)
         pdf.cell(25, 8, f"{p.stock} u.", border=1, align="C", fill=fill_bg)
-        # MODIFICADO: Inyecta el precio_compra en el renglón
         pdf.cell(25, 8, f"${float(p.precio_compra):,.0f}", border=1, align="R", fill=fill_bg)
         pdf.cell(25, 8, f"${subtotal:,.0f}", border=1, align="R", fill=fill_bg)
         pdf.ln(8)
@@ -574,7 +585,7 @@ def excel_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session 
 
 
 # ===============================================================================
-# 6. REPORTE DE VENTAS POR RANGO DE FECHAS - PDF 
+# 6. REPORTE DE VENTAS POR RANGO DE FECHAS - PDF
 # ===============================================================================
 @router.get("/global/ventas-pdf")
 def pdf_ventas_por_fechas(fecha_inicio: str, fecha_fin: str, session: Session = Depends(get_session)):
