@@ -31,15 +31,19 @@ def clientes(session: Session = Depends(get_session)):
 
 @router.post("/", response_model=ClienteResponse, status_code=201)
 def crear_cliente(cliente: ClienteCreate, session: Session= Depends(get_session)):
-    statement = select(Cliente).where(Cliente.email == cliente.email)
-    email_existente = session.exec(statement).first()
-
-    if email_existente:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error: El email '{cliente.email}' ya está registrado."
-        )
     
+    # 1. Validar duplicados SOLO si el cliente proporcionó un email
+    if cliente.email:
+        statement = select(Cliente).where(Cliente.email == cliente.email)
+        email_existente = session.exec(statement).first()
+
+        if email_existente:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error: El email '{cliente.email}' ya está registrado."
+            )
+    
+    # 2. Creación normal
     db_cliente = Cliente.model_validate(cliente)
     try:
         session.add(db_cliente)
@@ -61,8 +65,14 @@ def actualizar_cliente(id: int, cliente_data: ClienteUpdate, session: Session = 
     
     if not db_cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    
     datos_nuevos = cliente_data.model_dump(exclude_unset=True)
+    
+    # Si la propiedad "email" viene en los datos y es un string vacío o puro espacio, se vuelve None.
+    if "email" in datos_nuevos and isinstance(datos_nuevos["email"], str):
+        if datos_nuevos["email"].strip() == "":
+            datos_nuevos["email"] = None
+    # -------------------------------------------------------------------------
+
     db_cliente.sqlmodel_update(datos_nuevos)
     session.add(db_cliente)
 

@@ -7,7 +7,7 @@ from decimal import Decimal
 class ClienteBase(SQLModel):
     nombre: str
     apellido: Optional[str] = Field(default=None)
-    email: Optional[str] = Field(default=None)
+    email: Optional[str] = None
     descripcion: Optional[str] = Field(default=None)
     telefono: Optional[str] = Field(default=None)
 

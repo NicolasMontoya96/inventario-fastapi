@@ -18,7 +18,7 @@ class Cliente(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     nombre: str = Field(nullable=False)
     apellido: Optional[str] = Field(default=None)
-    email: Optional[str] = Field(default=None)
+    email: Optional[str] = Field(default=None, nullable=True)
     descripcion: Optional[str] = Field(default=None)
     telefono: Optional[str] = Field(default=None)
     
