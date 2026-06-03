@@ -108,6 +108,27 @@ class Abono(SQLModel, table=True):
     fecha: datetime = Field(default_factory=datetime.now)
     cliente_id: int = Field(foreign_key="cliente.id")
     
-    # Cambiado a Decimal para consistencia contable
     monto_abonado: Decimal = Field(default=Decimal("0.0"))
     notas: Optional[str] = Field(default=None)
+
+
+class Devolucion(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fecha: datetime = Field(default_factory=datetime.now)
+    venta_id: int = Field(foreign_key="ventas.id")
+    motivo: str
+    total_devolucion: Decimal
+
+    detalles: list["DetalleDevolucion"] = Relationship(back_populates="devolucion")
+
+
+class DetalleDevolucion(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    devolucion_id: int = Field(foreign_key="devolucion.id")
+    detalle_venta_id: int = Field(foreign_key="detalleventa.id")
+    producto_id: int = Field(foreign_key="producto.id")
+    nombre_producto: str = Field(default="")
+    cantidad: int
+    precio_unitario: Decimal
+
+    devolucion: "Devolucion" = Relationship(back_populates="detalles")

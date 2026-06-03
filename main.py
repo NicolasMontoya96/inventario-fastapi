@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends 
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import create_db_and_tables
-from routers import proveedor, producto, categoria, cliente, venta, compra, estadisticas, usuario
+from routers import proveedor, producto, categoria, cliente, venta, compra, estadisticas, usuario, devolucion
 
 
 from auth.auth import obtener_usuario_actual 
@@ -35,6 +35,7 @@ app.include_router(cliente.router, dependencies=candado)
 app.include_router(compra.router, dependencies=candado)
 app.include_router(venta.router, dependencies=candado)
 app.include_router(estadisticas.router, dependencies=candado)
+app.include_router(devolucion.router, dependencies=candado)
 
 
 app.include_router(usuario.router)
