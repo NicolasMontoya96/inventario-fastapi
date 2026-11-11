@@ -51,6 +51,7 @@ class Producto(SQLModel, table=True):
     activo: bool = Field(default=True)
     proveedor_id: int = Field(foreign_key="proveedor.id")
     categoria_id: int = Field(foreign_key="categoria.id")
+    imagen_url: Optional[str] = Field(default=None)
 
 class Ventas(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -132,3 +133,36 @@ class DetalleDevolucion(SQLModel, table=True):
     precio_unitario: Decimal
 
     devolucion: "Devolucion" = Relationship(back_populates="detalles")
+
+#-----------------------------------------------------------------------
+#Integración Web
+
+class PedidoWeb(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    fecha: datetime = Field(default_factory=datetime.now)
+
+    nombre_cliente: str
+    telefono_cliente: str
+    email_cliente: Optional[str] = Field(default=None)
+    direccion_envio: str
+    acepta_tratamiento_datos: bool = Field(default=False)
+
+    total_pedido: Decimal
+    estado: str = Field(default="pendiente")  # pendiente | pagado | fallido | expirado
+
+    referencia_pago: str = Field(unique=True, index=True)
+    transaccion_wompi_id: Optional[str] = Field(default=None, index=True)
+    expira_en: Optional[datetime] = Field(default=None)
+
+    detalles: list["DetallePedidoWeb"] = Relationship(back_populates="pedido")
+
+
+class DetallePedidoWeb(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    pedido_id: int = Field(foreign_key="pedidoweb.id")
+    producto_id: int = Field(foreign_key="producto.id")
+    cantidad: int
+    precio_unitario: Decimal
+    nombre_producto: str = Field(default="")
+
+    pedido: "PedidoWeb" = Relationship(back_populates="detalles")

@@ -11,6 +11,7 @@ class ProductoBase(SQLModel):
     especificaciones: Dict[str, Any] = Field(default={})
     categoria_id: int
     proveedor_id: int
+    imagen_url: Optional[str] = None          # <-- NUEVO
 
 class ProductoCreate(ProductoBase):
     pass
@@ -23,6 +24,7 @@ class ProductoList(SQLModel):
     stock: int
     categoria_id: int
     proveedor_id: int
+    imagen_url: Optional[str] = None          # <-- NUEVO
 
 class ProductoResponse(ProductoBase):
     id: int
@@ -39,3 +41,4 @@ class ProductoUpdate(SQLModel):
     especificaciones: Optional[Dict[str, Any]] = None
     categoria_id: Optional[int] = None
     proveedor_id: Optional[int] = None
+    imagen_url: Optional[str] = None          # <-- NUEVO

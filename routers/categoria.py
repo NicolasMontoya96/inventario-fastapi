@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from auth.auth import obtener_usuario_actual
 from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 from db.database import get_session
@@ -17,7 +18,7 @@ def listar_categorias(session: Session = Depends(get_session)):
 
 
 
-@router.post("/", response_model=CategoriaResponse)
+@router.post("/", response_model=CategoriaResponse, dependencies=[Depends(obtener_usuario_actual)])
 def crear_categoria(categoria: CategoriaCreate, session: Session = Depends(get_session)):
     statement = select(Categoria).where(Categoria.nombre == categoria.nombre)
     existente = session.exec(statement).first()
@@ -42,7 +43,7 @@ def crear_categoria(categoria: CategoriaCreate, session: Session = Depends(get_s
 
 
 
-@router.patch("/{id}", response_model=CategoriaResponse)
+@router.patch("/{id}", response_model=CategoriaResponse, dependencies=[Depends(obtener_usuario_actual)])
 def actualizar_categoria(id: int, categoria_data: CategoriaUpdate, session: Session = Depends(get_session)):
     db_categoria = session.get(Categoria, id)
     if not db_categoria:
@@ -67,7 +68,7 @@ def actualizar_categoria(id: int, categoria_data: CategoriaUpdate, session: Sess
     return db_categoria
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(obtener_usuario_actual)])
 def eliminar_categoria(id: int, session: Session = Depends(get_session)):
     db_categoria = session.get(Categoria, id)
 
