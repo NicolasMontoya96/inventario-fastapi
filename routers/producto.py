@@ -15,6 +15,14 @@ def productos(session: Session = Depends(get_session)):
     return session.exec(select(Producto).where(Producto.activo == True)).all()
 
 #------------------------------------------------------------------------------------------------
+@router.get("/{id}", response_model=ProductoResponse)
+def obtener_producto(id: int, session: Session = Depends(get_session)):
+    db_producto = session.get(Producto, id)
+    if not db_producto or not db_producto.activo:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    return db_producto
+
+#------------------------------------------------------------------------------------------------
 @router.post("/", response_model=ProductoResponse, status_code=201)
 def create_producto(producto: ProductoCreate, session: Session= Depends(get_session)):
 

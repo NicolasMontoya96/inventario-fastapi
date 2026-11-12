@@ -10,9 +10,13 @@ app = FastAPI(title="API de Inventario")
 
 
 origenes_permitidos = [
-    "http://localhost:5173",                     
-    "http://127.0.0.1:5173",                     
-    "https://jazzy-entremet-597d36.netlify.app" 
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # Puerto al que Vite cae automáticamente cuando el 5173 ya está ocupado
+    # (por ejemplo, con la tienda-m-accesorios corriendo en paralelo en local).
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "https://jazzy-entremet-597d36.netlify.app"
 ]
 
 # 2. Aplicamos la lista al CORS
