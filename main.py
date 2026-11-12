@@ -32,9 +32,14 @@ app.add_middleware(
 candado = [Depends(obtener_usuario_actual)]
 
 
+# producto.router y categoria.router YA NO llevan el candado a nivel de
+# router: la tienda pública necesita poder listar productos y categorías
+# sin iniciar sesión. Las rutas de escritura (crear/editar/eliminar) siguen
+# protegidas, pero ahora con el candado puesto directamente en cada una de
+# esas rutas dentro de producto.py y categoria.py, no aquí.
 app.include_router(proveedor.router, dependencies=candado)
-app.include_router(producto.router, dependencies=candado)
-app.include_router(categoria.router, dependencies=candado)
+app.include_router(producto.router)
+app.include_router(categoria.router)
 app.include_router(cliente.router, dependencies=candado)
 app.include_router(compra.router, dependencies=candado)
 app.include_router(venta.router, dependencies=candado)

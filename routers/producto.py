@@ -4,6 +4,7 @@ from db.models import Producto, Proveedor, Categoria, Compra, DetalleCompra  # M
 from db.schemas.productoSchema import ProductoCreate, ProductoResponse, ProductoUpdate, ProductoList, ProductoBase
 from db.database import get_session
 from datetime import datetime  # MODIFICADO: Añadido para estampar la hora local de la compra
+from auth.auth import obtener_usuario_actual
 
 router = APIRouter(
     prefix="/productos",
@@ -23,7 +24,7 @@ def obtener_producto(id: int, session: Session = Depends(get_session)):
     return db_producto
 
 #------------------------------------------------------------------------------------------------
-@router.post("/", response_model=ProductoResponse, status_code=201)
+@router.post("/", response_model=ProductoResponse, status_code=201, dependencies=[Depends(obtener_usuario_actual)])
 def create_producto(producto: ProductoCreate, session: Session= Depends(get_session)):
 
     db_proveedor = session.get(Proveedor, producto.proveedor_id)
@@ -70,7 +71,7 @@ def create_producto(producto: ProductoCreate, session: Session= Depends(get_sess
     return db_producto
 #----------------------------------------------------------------------------------------------------
 
-@router.patch("/{id}", response_model=ProductoResponse)
+@router.patch("/{id}", response_model=ProductoResponse, dependencies=[Depends(obtener_usuario_actual)])
 def actualizar_producto(id: int, producto_data: ProductoUpdate, session: Session = Depends(get_session)):
     db_producto = session.get(Producto, id)
     if not db_producto:
@@ -93,7 +94,7 @@ def actualizar_producto(id: int, producto_data: ProductoUpdate, session: Session
     return db_producto
 
 #------------------------------------------------------------------------------------------------
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(obtener_usuario_actual)])
 def eliminar_producto(id: int, session: Session = Depends(get_session)):
     db_producto = session.get(Producto, id)
     if not db_producto:
