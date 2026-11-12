@@ -1,11 +1,11 @@
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, Field
 from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime
 
 class ItemCarrito(SQLModel):
     producto_id: int
-    cantidad: int
+    cantidad: int = Field(gt=0)
 
 class PedidoWebCreate(SQLModel):
     nombre_cliente: str
