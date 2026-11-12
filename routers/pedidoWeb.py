@@ -4,6 +4,8 @@ import uuid
 import resend
 from datetime import datetime, timedelta
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlmodel import Session, select, update
 
@@ -11,6 +13,7 @@ from db.models import PedidoWeb, DetallePedidoWeb, Producto
 from db.schemas.pedidoWebSchema import PedidoWebCreate, PedidoWebResponse
 from db.database import get_session
 from limiter import limiter
+from auth.auth import obtener_usuario_actual
 
 resend.api_key = os.getenv("RESEND_API_KEY")
 
@@ -137,6 +140,19 @@ def crear_pedido(request: Request, pedido_data: PedidoWebCreate, session: Sessio
 
     enviar_correo_confirmacion_pedido(nuevo_pedido)
     return nuevo_pedido
+
+
+@router.get("/", response_model=list[PedidoWebResponse], dependencies=[Depends(obtener_usuario_actual)])
+def listar_pedidos(
+    estado: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    """Listado para el panel de administración (protegido). El cliente de
+    la tienda nunca llega aquí: solo conoce su propia referencia de pago."""
+    consulta = select(PedidoWeb).order_by(PedidoWeb.fecha.desc())
+    if estado:
+        consulta = consulta.where(PedidoWeb.estado == estado)
+    return session.exec(consulta).all()
 
 
 @router.get("/{referencia_pago}", response_model=PedidoWebResponse)

@@ -25,6 +25,10 @@ class DetallePedidoWebResponse(SQLModel):
 class PedidoWebResponse(SQLModel):
     id: int
     fecha: datetime
+    nombre_cliente: str
+    telefono_cliente: str
+    email_cliente: Optional[str] = None
+    direccion_envio: str
     total_pedido: Decimal
     estado: str
     referencia_pago: str
