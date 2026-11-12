@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from auth.auth import obtener_usuario_actual
 from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 from db.database import get_session

@@ -1,10 +1,20 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from auth.auth import obtener_usuario_actual
 from sqlmodel import Session, select
 from db.models import Producto, Proveedor, Categoria, Compra, DetalleCompra  # MODIFICADO: Añadidas Compra y DetalleCompra
 from db.schemas.productoSchema import ProductoCreate, ProductoResponse, ProductoUpdate, ProductoList, ProductoBase
 from db.database import get_session
 from datetime import datetime  # MODIFICADO: Añadido para estampar la hora local de la compra
-from auth.auth import obtener_usuario_actual
+
+import cloudinary
+import cloudinary.uploader
+import os
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+)
 
 router = APIRouter(
     prefix="/productos",
@@ -15,7 +25,7 @@ router = APIRouter(
 def productos(session: Session = Depends(get_session)):
     return session.exec(select(Producto).where(Producto.activo == True)).all()
 
-#------------------------------------------------------------------------------------------------
+
 @router.get("/{id}", response_model=ProductoResponse)
 def obtener_producto(id: int, session: Session = Depends(get_session)):
     db_producto = session.get(Producto, id)
@@ -105,3 +115,46 @@ def eliminar_producto(id: int, session: Session = Depends(get_session)):
     session.commit()
     
     return {"message": f"Producto '{db_producto.nombre}' ocultado del catálogo correctamente"}
+
+
+#------------------------------------------------------------------------------------------------
+@router.post("/{id}/imagen", response_model=ProductoResponse, dependencies=[Depends(obtener_usuario_actual)])
+def subir_imagen_producto(id: int, archivo: UploadFile = File(...), session: Session = Depends(get_session)):
+    db_producto = session.get(Producto, id)
+    if not db_producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    resultado = cloudinary.uploader.upload(
+        archivo.file,
+        folder="m-accesorios/productos",
+        public_id=f"producto_{id}",
+        overwrite=True,
+        resource_type="image",
+    )
+
+    db_producto.imagen_url = resultado["secure_url"]
+    session.add(db_producto)
+    session.commit()
+    session.refresh(db_producto)
+    return db_producto
+
+#------------------------------------------------------------------------------------------------
+@router.delete("/{id}/imagen", response_model=ProductoResponse, dependencies=[Depends(obtener_usuario_actual)])
+def eliminar_imagen_producto(id: int, session: Session = Depends(get_session)):
+    db_producto = session.get(Producto, id)
+    if not db_producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    if not db_producto.imagen_url:
+        raise HTTPException(status_code=400, detail="Este producto no tiene foto para eliminar")
+
+    try:
+        cloudinary.uploader.destroy(f"m-accesorios/productos/producto_{id}")
+    except Exception as error_cloudinary:
+        print(f"Alerta del Sistema: No se pudo eliminar la imagen {id} de Cloudinary: {error_cloudinary}")
+
+    db_producto.imagen_url = None
+    session.add(db_producto)
+    session.commit()
+    session.refresh(db_producto)
+    return db_producto
