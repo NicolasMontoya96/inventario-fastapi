@@ -52,6 +52,11 @@ class Producto(SQLModel, table=True):
     proveedor_id: int = Field(foreign_key="proveedor.id")
     categoria_id: int = Field(foreign_key="categoria.id")
     imagen_url: Optional[str] = Field(default=None)
+    # Separa "existe en el inventario" de "se muestra en la tienda online".
+    # Por defecto false: nada se publica solo porque se registró en el
+    # inventario — el admin lo activa a propósito cuando el producto ya
+    # tiene foto, precio confirmado y está listo para vender en línea.
+    publicado_en_tienda: bool = Field(default=False)
 
 class Ventas(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

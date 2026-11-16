@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from auth.auth import obtener_usuario_actual
 from sqlmodel import Session, select
 from db.models import Producto, Proveedor, Categoria, Compra, DetalleCompra  # MODIFICADO: Añadidas Compra y DetalleCompra
-from db.schemas.productoSchema import ProductoCreate, ProductoResponse, ProductoUpdate, ProductoList, ProductoBase
+from db.schemas.productoSchema import ProductoCreate, ProductoResponse, ProductoUpdate, ProductoList, ProductoBase, ProductoCatalogoPublico
 from db.database import get_session
 from datetime import datetime  # MODIFICADO: Añadido para estampar la hora local de la compra
 
@@ -21,12 +21,39 @@ router = APIRouter(
     tags=["Productos"]
 )
 
-@router.get("/", response_model=list[ProductoList])
+@router.get("/", response_model=list[ProductoList], dependencies=[Depends(obtener_usuario_actual)])
 def productos(session: Session = Depends(get_session)):
     return session.exec(select(Producto).where(Producto.activo == True)).all()
 
 
-@router.get("/{id}", response_model=ProductoResponse)
+# --- Catálogo público de la tienda ---
+# Separados de "/" y "/{id}" (que son para el panel admin, ahora protegidos
+# con login) a propósito: la tienda nunca debe ver precio_compra ni
+# proveedor_id, y nunca debe ver un producto que el admin todavía no marcó
+# como publicado_en_tienda, aunque ya exista en el inventario.
+#
+# Van ANTES de "/{id}" porque FastAPI resuelve las rutas en el orden en que
+# se registran: si "/{id}" quedara primero, "tienda" se interpretaría como
+# un intento de id numérico y nunca llegaría aquí.
+@router.get("/tienda", response_model=list[ProductoCatalogoPublico])
+def catalogo_tienda(session: Session = Depends(get_session)):
+    return session.exec(
+        select(Producto).where(
+            Producto.activo == True,
+            Producto.publicado_en_tienda == True,
+        )
+    ).all()
+
+
+@router.get("/tienda/{id}", response_model=ProductoCatalogoPublico)
+def producto_tienda(id: int, session: Session = Depends(get_session)):
+    db_producto = session.get(Producto, id)
+    if not db_producto or not db_producto.activo or not db_producto.publicado_en_tienda:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    return db_producto
+
+
+@router.get("/{id}", response_model=ProductoResponse, dependencies=[Depends(obtener_usuario_actual)])
 def obtener_producto(id: int, session: Session = Depends(get_session)):
     db_producto = session.get(Producto, id)
     if not db_producto or not db_producto.activo:

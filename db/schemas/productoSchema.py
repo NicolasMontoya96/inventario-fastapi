@@ -12,6 +12,10 @@ class ProductoBase(SQLModel):
     categoria_id: int
     proveedor_id: int
     imagen_url: Optional[str] = None          # <-- NUEVO
+    # Controla si el producto se ve en la tienda pública, aparte de que ya
+    # exista en el inventario. False por defecto: el admin lo activa a
+    # propósito, nunca se publica solo.
+    publicado_en_tienda: bool = False
 
 class ProductoCreate(ProductoBase):
     pass
@@ -25,6 +29,7 @@ class ProductoList(SQLModel):
     categoria_id: int
     proveedor_id: int
     imagen_url: Optional[str] = None          # <-- NUEVO
+    publicado_en_tienda: bool = False
 
 class ProductoResponse(ProductoBase):
     id: int
@@ -42,3 +47,22 @@ class ProductoUpdate(SQLModel):
     categoria_id: Optional[int] = None
     proveedor_id: Optional[int] = None
     imagen_url: Optional[str] = None          # <-- NUEVO
+    publicado_en_tienda: Optional[bool] = None
+
+
+# --- Catálogo público (tienda) ---
+# Deliberadamente NO hereda de ProductoBase: nunca debe llevar
+# precio_compra (costo) ni proveedor_id — son datos internos del negocio,
+# no algo que un cliente en internet deba poder consultar.
+class ProductoCatalogoPublico(SQLModel):
+    id: int
+    nombre: str
+    descripcion: Optional[str] = None
+    precio_venta: Decimal
+    stock: int
+    especificaciones: Dict[str, Any] = Field(default={})
+    categoria_id: int
+    imagen_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
