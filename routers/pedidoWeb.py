@@ -44,6 +44,25 @@ def liberar_pedidos_vencidos(session: Session):
         session.commit()
 
 
+def liberar_si_vencido(session: Session, pedido: PedidoWeb) -> PedidoWeb:
+    """Mismo chequeo que liberar_pedidos_vencidos() pero para un pedido
+    puntual, al momento de consultarlo. Sin esto, un pedido vencido se queda
+    viendo "pendiente" para el cliente que lo consulta hasta que OTRO
+    cliente complete un pedido nuevo y dispare el barrido general — con la
+    cuenta regresiva del frontend, eso se nota de inmediato."""
+    if pedido.estado == "pendiente" and pedido.expira_en and pedido.expira_en < datetime.now():
+        for detalle in pedido.detalles:
+            db_producto = session.get(Producto, detalle.producto_id)
+            if db_producto:
+                db_producto.stock += detalle.cantidad
+                session.add(db_producto)
+        pedido.estado = "expirado"
+        session.add(pedido)
+        session.commit()
+        session.refresh(pedido)
+    return pedido
+
+
 def enviar_correo_confirmacion_pedido(pedido: PedidoWeb):
     if not pedido.email_cliente:
         return
@@ -162,7 +181,7 @@ def consultar_pedido(referencia_pago: str, session: Session = Depends(get_sessio
     ).first()
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    return pedido
+    return liberar_si_vencido(session, pedido)
 
 
 @router.post("/webhook-wompi")

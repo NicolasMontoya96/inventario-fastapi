@@ -32,6 +32,10 @@ class PedidoWebResponse(SQLModel):
     total_pedido: Decimal
     estado: str
     referencia_pago: str
+    # Ya existía en el modelo (se usa para liberar el stock reservado),
+    # simplemente no se exponía todavía. El frontend la necesita para
+    # mostrar la cuenta regresiva en la página de "pedido pendiente".
+    expira_en: Optional[datetime] = None
     detalles: List[DetallePedidoWebResponse] = []
 
     class Config:
