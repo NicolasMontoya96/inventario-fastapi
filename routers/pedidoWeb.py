@@ -184,6 +184,53 @@ def consultar_pedido(referencia_pago: str, session: Session = Depends(get_sessio
     return liberar_si_vencido(session, pedido)
 
 
+@router.get("/{referencia_pago}/firma-pago")
+def obtener_firma_pago(referencia_pago: str, session: Session = Depends(get_session)):
+    """Datos que el frontend necesita para abrir el Widget de Wompi sobre
+    este pedido: llave pública (segura de compartir) + firma de integridad
+    (prueba de que el monto/referencia no se manipularon en el navegador).
+
+    El WOMPI_INTEGRITY_SECRET nunca sale de este endpoint — si saliera,
+    cualquiera podría firmar un monto distinto al que realmente se debe."""
+    pedido = session.exec(
+        select(PedidoWeb).where(PedidoWeb.referencia_pago == referencia_pago)
+    ).first()
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+    pedido = liberar_si_vencido(session, pedido)
+    if pedido.estado != "pendiente":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Este pedido ya no admite pago (estado actual: {pedido.estado})",
+        )
+
+    llave_publica = os.getenv("WOMPI_PUBLIC_KEY")
+    secreto_integridad = os.getenv("WOMPI_INTEGRITY_SECRET")
+    if not llave_publica or not secreto_integridad:
+        raise HTTPException(
+            status_code=503,
+            detail="Los pagos en línea todavía no están configurados. Intenta más tarde.",
+        )
+
+    moneda = "COP"
+    # Wompi trabaja en centavos. Con Decimal evitamos el redondeo flotante
+    # de float antes de pasar a entero (ej. 29990.0 * 100 puede dar
+    # 2998999.9999... en binario y truncar mal con int()).
+    monto_centavos = int((pedido.total_pedido * 100).to_integral_value())
+
+    cadena_a_firmar = f"{referencia_pago}{monto_centavos}{moneda}{secreto_integridad}"
+    firma = hashlib.sha256(cadena_a_firmar.encode()).hexdigest()
+
+    return {
+        "llave_publica": llave_publica,
+        "referencia": referencia_pago,
+        "monto_centavos": monto_centavos,
+        "moneda": moneda,
+        "firma_integridad": firma,
+    }
+
+
 @router.post("/webhook-wompi")
 @limiter.limit("30/minute")
 async def webhook_wompi(request: Request, session: Session = Depends(get_session)):
