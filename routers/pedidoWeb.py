@@ -173,11 +173,25 @@ def crear_pedido(request: Request, pedido_data: PedidoWebCreate, session: Sessio
             )
         )
 
+    # direccion_envio es el texto combinado que usan los correos y el
+    # código viejo — se arma aquí a partir de los campos estructurados que
+    # realmente llena el formulario, para no tener dos fuentes de verdad.
+    partes_direccion = [pedido_data.direccion]
+    if pedido_data.referencia_direccion:
+        partes_direccion.append(pedido_data.referencia_direccion)
+    partes_direccion.append(pedido_data.ciudad)
+    partes_direccion.append(pedido_data.departamento)
+    direccion_envio_combinada = ", ".join(p.strip() for p in partes_direccion if p and p.strip())
+
     nuevo_pedido = PedidoWeb(
         nombre_cliente=pedido_data.nombre_cliente,
         telefono_cliente=pedido_data.telefono_cliente,
         email_cliente=pedido_data.email_cliente,
-        direccion_envio=pedido_data.direccion_envio,
+        direccion_envio=direccion_envio_combinada,
+        departamento=pedido_data.departamento,
+        ciudad=pedido_data.ciudad,
+        direccion=pedido_data.direccion,
+        referencia_direccion=pedido_data.referencia_direccion,
         acepta_tratamiento_datos=pedido_data.acepta_tratamiento_datos,
         total_pedido=total,
         referencia_pago=str(uuid.uuid4()),

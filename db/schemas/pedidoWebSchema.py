@@ -12,7 +12,15 @@ class PedidoWebCreate(SQLModel):
     nombre_cliente: str
     telefono_cliente: str
     email_cliente: Optional[str] = None
-    direccion_envio: str
+    # Dirección estructurada en vez de un solo cuadro de texto libre — más
+    # fácil de usar para una guía de envío y de mostrar en el panel de
+    # admin. direccion_envio (el texto combinado, para compatibilidad con
+    # código viejo que todavía lo lee) se arma solo en el backend a partir
+    # de estos campos, no lo manda el frontend.
+    departamento: str
+    ciudad: str
+    direccion: str
+    referencia_direccion: Optional[str] = None
     acepta_tratamiento_datos: bool
     items: List[ItemCarrito]
 
@@ -30,6 +38,10 @@ class PedidoWebResponse(SQLModel):
     telefono_cliente: str
     email_cliente: Optional[str] = None
     direccion_envio: str
+    departamento: Optional[str] = None
+    ciudad: Optional[str] = None
+    direccion: Optional[str] = None
+    referencia_direccion: Optional[str] = None
     total_pedido: Decimal
     estado: str
     referencia_pago: str

@@ -149,7 +149,16 @@ class PedidoWeb(SQLModel, table=True):
     nombre_cliente: str
     telefono_cliente: str
     email_cliente: Optional[str] = Field(default=None)
+    # direccion_envio queda como el campo "crudo" por compatibilidad hacia
+    # atrás (pedidos viejos solo tienen esto). Los pedidos nuevos llenan
+    # además los campos de abajo, estructurados, para que el panel de admin
+    # y las guías de envío no dependan de que el cliente haya escrito bien
+    # la dirección en un solo cuadro de texto.
     direccion_envio: str
+    departamento: Optional[str] = Field(default=None)
+    ciudad: Optional[str] = Field(default=None)
+    direccion: Optional[str] = Field(default=None)
+    referencia_direccion: Optional[str] = Field(default=None)
     acepta_tratamiento_datos: bool = Field(default=False)
 
     total_pedido: Decimal
