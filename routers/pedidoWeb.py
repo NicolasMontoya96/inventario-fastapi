@@ -238,7 +238,10 @@ async def webhook_wompi(request: Request, session: Session = Depends(get_session
 
     firma = payload.get("signature", {})
     propiedades = firma.get("properties", [])
-    timestamp = firma.get("timestamp")
+    # El timestamp viene en la raíz del payload, no dentro de "signature"
+    # (ahí solo vienen "checksum" y "properties") — Wompi lo documenta así,
+    # y es parte de la cadena que se firma.
+    timestamp = payload.get("timestamp")
     checksum_recibido = firma.get("checksum", "")
 
     def obtener_valor(ruta: str):
