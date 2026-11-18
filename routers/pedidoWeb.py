@@ -63,14 +63,23 @@ def liberar_si_vencido(session: Session, pedido: PedidoWeb) -> PedidoWeb:
     return pedido
 
 
+def _filas_html_detalles(pedido: PedidoWeb) -> str:
+    return "".join(
+        f"<tr><td>{d.nombre_producto}</td><td>{d.cantidad}</td><td>${d.precio_unitario:,.0f}</td></tr>"
+        for d in pedido.detalles
+    )
+
+
 def enviar_correo_confirmacion_pedido(pedido: PedidoWeb):
+    """Aviso de que el pedido se creó y quedó reservado — se envía al crear
+    el pedido, ANTES de que el cliente pague. No confirma que el pago fue
+    exitoso (por eso el texto habla de "reserva" y "completa el pago"), y se
+    envía igual aunque el pago después falle o se venza la reserva. La
+    confirmación real de compra es enviar_correo_pago_confirmado(), que solo
+    se dispara cuando el webhook de Wompi aprueba el pago."""
     if not pedido.email_cliente:
         return
     try:
-        filas_html = "".join(
-            f"<tr><td>{d.nombre_producto}</td><td>{d.cantidad}</td><td>${d.precio_unitario:,.0f}</td></tr>"
-            for d in pedido.detalles
-        )
         resend.Emails.send({
             "from": "M Accesorios <onboarding@resend.dev>",
             "to": pedido.email_cliente,
@@ -81,14 +90,41 @@ def enviar_correo_confirmacion_pedido(pedido: PedidoWeb):
                 <p><strong>Referencia de pago:</strong> {pedido.referencia_pago}</p>
                 <table border="1" cellpadding="6" style="border-collapse:collapse">
                     <tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr>
-                    {filas_html}
+                    {_filas_html_detalles(pedido)}
                 </table>
                 <p><strong>Total: ${pedido.total_pedido:,.0f}</strong></p>
                 <p>Dirección de envío: {pedido.direccion_envio}</p>
             """,
         })
     except Exception as error_correo:
-        print(f"Alerta del Sistema: No se pudo enviar el correo de confirmación del pedido {pedido.id}: {error_correo}")
+        print(f"Alerta del Sistema: No se pudo enviar el correo de recepción del pedido {pedido.id}: {error_correo}")
+
+
+def enviar_correo_pago_confirmado(pedido: PedidoWeb):
+    """Confirmación real de compra: solo se llama desde el webhook de
+    Wompi, cuando el pago quedó APROBADO de verdad. Si el pago falla o la
+    reserva se vence, este correo nunca se envía."""
+    if not pedido.email_cliente:
+        return
+    try:
+        resend.Emails.send({
+            "from": "M Accesorios <onboarding@resend.dev>",
+            "to": pedido.email_cliente,
+            "subject": f"¡Pago confirmado! Pedido #{pedido.id} — M Accesorios",
+            "html": f"""
+                <h2>¡Tu pago fue confirmado, {pedido.nombre_cliente}!</h2>
+                <p>Ya estamos preparando tu pedido para enviarlo.</p>
+                <p><strong>Referencia de pago:</strong> {pedido.referencia_pago}</p>
+                <table border="1" cellpadding="6" style="border-collapse:collapse">
+                    <tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr>
+                    {_filas_html_detalles(pedido)}
+                </table>
+                <p><strong>Total: ${pedido.total_pedido:,.0f}</strong></p>
+                <p>Dirección de envío: {pedido.direccion_envio}</p>
+            """,
+        })
+    except Exception as error_correo:
+        print(f"Alerta del Sistema: No se pudo enviar el correo de pago confirmado del pedido {pedido.id}: {error_correo}")
 
 
 @router.post("/", response_model=PedidoWebResponse, status_code=201)
@@ -289,4 +325,9 @@ async def webhook_wompi(request: Request, session: Session = Depends(get_session
 
     session.add(pedido)
     session.commit()
+
+    if pedido.estado == "pagado":
+        session.refresh(pedido)
+        enviar_correo_pago_confirmado(pedido)
+
     return {"ok": True}
