@@ -1,7 +1,8 @@
 import os
 import hashlib
-import uuid
+import secrets
 import resend
+from pathlib import Path
 from datetime import datetime, timedelta
 
 from typing import Optional
@@ -19,8 +20,76 @@ resend.api_key = os.getenv("RESEND_API_KEY")
 
 router = APIRouter(prefix="/pedidos-web", tags=["Pedidos Web"])
 
+# Logo para el encabezado de los correos, embebido como adjunto "inline"
+# (referenciado con cid: en el HTML) en vez de cargarlo desde una URL
+# pública — así funciona aunque la tienda todavía no esté publicada en un
+# dominio real, y no depende de que ese dominio seguro siga existiendo.
+_RUTA_LOGO_CORREO = Path(__file__).resolve().parent.parent / "assets" / "logo-correo.png"
+_LOGO_CORREO_BYTES: Optional[bytes] = None
+try:
+    _LOGO_CORREO_BYTES = _RUTA_LOGO_CORREO.read_bytes()
+except FileNotFoundError:
+    # Si por lo que sea el archivo no está, seguimos sin el logo en vez de
+    # que fallen los correos — no vale la pena tumbar un aviso de pedido
+    # por un logo.
+    pass
+
+# HTML del encabezado del correo: el logo real si lo pudimos cargar, o si
+# no (ambiente sin el archivo, por ejemplo) el wordmark de texto que se
+# usaba antes — nunca dejamos el encabezado vacío.
+if _LOGO_CORREO_BYTES:
+    _LOGO_HTML = (
+        '<img src="cid:logo-correo" width="64" height="64" alt="M Accesorios" '
+        'style="display:block;margin:0 auto;border-radius:50%;">'
+    )
+else:
+    _LOGO_HTML = (
+        '<span style="font-size:18px;font-weight:800;letter-spacing:0.02em;'
+        'color:#111111;">M &middot; Accesorios</span>'
+    )
+
+# Adjunto "inline" con el logo, referenciado en el HTML con cid:logo-correo.
+# Resend espera el contenido como lista de bytes (no base64), según su
+# propio ejemplo en Python. Lista vacía si no hay logo, para no mandar un
+# adjunto vacío sin sentido.
+_ADJUNTOS_LOGO = (
+    [{
+        "filename": "logo-correo.png",
+        "content": list(_LOGO_CORREO_BYTES),
+        "content_id": "logo-correo",
+        "content_type": "image/png",
+    }]
+    if _LOGO_CORREO_BYTES
+    else []
+)
+
 
 MINUTOS_RESERVA = 15
+
+# Sin 0/O, 1/I/L — se prestan a confusión cuando alguien lee el código en
+# voz alta o lo escribe a mano (ej. por WhatsApp).
+_ALFABETO_REFERENCIA = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+
+
+def generar_referencia_pago(session: Session) -> str:
+    """Código corto para que el cliente lo use de referencia (antes era un
+    UUID completo de 36 caracteres — impráctico para leer, escribir a mano
+    o decir por teléfono). No tiene ningún significado especial para Wompi
+    ni para el resto del sistema: solo necesita ser único, y en cualquier
+    parte donde antes se esperaba el UUID, este código funciona igual
+    porque siempre se trata como texto simple, nunca se valida su formato."""
+    for _ in range(5):
+        codigo = "".join(secrets.choice(_ALFABETO_REFERENCIA) for _ in range(6))
+        referencia = f"MA-{codigo}"
+        ya_existe = session.exec(
+            select(PedidoWeb).where(PedidoWeb.referencia_pago == referencia)
+        ).first()
+        if not ya_existe:
+            return referencia
+    # Si por una casualidad enorme las 5 veces chocaron con una referencia
+    # existente, usamos algo con muchísima más entropía en vez de seguir
+    # intentando — esto nunca debería pasar en la práctica.
+    return f"MA-{secrets.token_hex(6).upper()}"
 
 
 def liberar_pedidos_vencidos(session: Session):
@@ -64,10 +133,138 @@ def liberar_si_vencido(session: Session, pedido: PedidoWeb) -> PedidoWeb:
 
 
 def _filas_html_detalles(pedido: PedidoWeb) -> str:
-    return "".join(
-        f"<tr><td>{d.nombre_producto}</td><td>{d.cantidad}</td><td>${d.precio_unitario:,.0f}</td></tr>"
-        for d in pedido.detalles
-    )
+    filas = []
+    for d in pedido.detalles:
+        subtotal = d.cantidad * d.precio_unitario
+        filas.append(f"""
+            <tr>
+                <td style="padding:12px 0;border-bottom:1px solid #EFEFEF;color:#111111;font-size:14px;">{d.nombre_producto}</td>
+                <td style="padding:12px 0;border-bottom:1px solid #EFEFEF;color:#6A6A6A;font-size:14px;text-align:center;">{d.cantidad}</td>
+                <td style="padding:12px 0;border-bottom:1px solid #EFEFEF;color:#111111;font-size:14px;text-align:right;font-weight:600;">${subtotal:,.0f}</td>
+            </tr>
+        """)
+    return "".join(filas)
+
+
+def _direccion_html(pedido: PedidoWeb) -> str:
+    """Igual que en el panel de admin: si el pedido tiene los campos
+    estructurados nuevos los usamos, y si no (pedidos de antes de ese
+    cambio) caemos al texto combinado viejo."""
+    if pedido.direccion:
+        lineas = [pedido.direccion]
+        if pedido.referencia_direccion:
+            lineas.append(pedido.referencia_direccion)
+        lineas.append(f"{pedido.ciudad}, {pedido.departamento}")
+        return "<br>".join(lineas)
+    return pedido.direccion_envio
+
+
+def _plantilla_correo_pedido(
+    pedido: PedidoWeb,
+    *,
+    etiqueta_insignia: str,
+    color_insignia: str,
+    color_texto_insignia: str,
+    titulo: str,
+    mensaje: str,
+) -> str:
+    """Plantilla compartida por los dos correos de pedidos web (recibido /
+    pago confirmado) — misma estructura, solo cambian la insignia de estado,
+    el título y el mensaje. Todo con estilos inline y layout de tablas (no
+    flexbox/grid) porque así es como hay que escribir HTML de correos para
+    que se vea igual en Gmail, Outlook y el resto de clientes de correo."""
+    return f"""
+    <body style="margin:0;padding:0;background-color:#F4F4F4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F4F4;padding:32px 16px;">
+            <tr>
+                <td align="center">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#FFFFFF;border-radius:16px;overflow:hidden;">
+
+                        <!-- Encabezado -->
+                        <tr>
+                            <td style="padding:28px 32px 24px 32px;text-align:center;border-bottom:1px solid #F0F0F0;">
+                                {_LOGO_HTML}
+                            </td>
+                        </tr>
+
+                        <!-- Insignia de estado + titulo -->
+                        <tr>
+                            <td style="padding:28px 32px 8px 32px;text-align:center;">
+                                <span style="display:inline-block;padding:6px 14px;border-radius:999px;background-color:{color_insignia};color:{color_texto_insignia};font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">{etiqueta_insignia}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:8px 32px 4px 32px;text-align:center;">
+                                <h1 style="margin:0;font-size:22px;font-weight:800;color:#111111;">{titulo}</h1>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0 32px 24px 32px;text-align:center;">
+                                <p style="margin:0;font-size:14px;line-height:1.6;color:#6A6A6A;">{mensaje}</p>
+                            </td>
+                        </tr>
+
+                        <!-- Codigo de referencia -->
+                        <tr>
+                            <td style="padding:0 32px 24px 32px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F7F7F7;border-radius:12px;">
+                                    <tr>
+                                        <td style="padding:16px 20px;text-align:center;">
+                                            <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#9A9A9A;margin-bottom:4px;">Referencia de tu pedido</div>
+                                            <div style="font-size:20px;font-weight:800;color:#111111;letter-spacing:0.03em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">{pedido.referencia_pago}</div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Detalle del pedido -->
+                        <tr>
+                            <td style="padding:0 32px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td style="padding:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#9A9A9A;border-bottom:2px solid #111111;">Producto</td>
+                                        <td style="padding:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#9A9A9A;border-bottom:2px solid #111111;text-align:center;">Cant.</td>
+                                        <td style="padding:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#9A9A9A;border-bottom:2px solid #111111;text-align:right;">Subtotal</td>
+                                    </tr>
+                                    {_filas_html_detalles(pedido)}
+                                    <tr>
+                                        <td style="padding:14px 0 0 0;"></td>
+                                        <td style="padding:14px 0 0 0;font-size:14px;font-weight:700;color:#111111;text-align:right;">Total</td>
+                                        <td style="padding:14px 0 0 0;font-size:18px;font-weight:800;color:#111111;text-align:right;">${pedido.total_pedido:,.0f}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Direccion de envio -->
+                        <tr>
+                            <td style="padding:28px 32px 8px 32px;">
+                                <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#9A9A9A;margin-bottom:6px;">Dirección de envío</div>
+                                <div style="font-size:14px;line-height:1.6;color:#111111;">{_direccion_html(pedido)}</div>
+                            </td>
+                        </tr>
+
+                        <!-- Pie -->
+                        <tr>
+                            <td style="padding:28px 32px 32px 32px;">
+                                <p style="margin:0;font-size:12px;line-height:1.6;color:#9A9A9A;text-align:center;">Guarda esta referencia por si necesitas contactarnos sobre tu pedido.</p>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+                        <tr>
+                            <td style="padding:20px 32px;text-align:center;">
+                                <p style="margin:0;font-size:12px;color:#B0B0B0;">M Accesorios &middot; Cali, Colombia</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    """
 
 
 def enviar_correo_confirmacion_pedido(pedido: PedidoWeb):
@@ -84,17 +281,15 @@ def enviar_correo_confirmacion_pedido(pedido: PedidoWeb):
             "from": "M Accesorios <onboarding@resend.dev>",
             "to": pedido.email_cliente,
             "subject": f"Recibimos tu pedido #{pedido.id} — M Accesorios",
-            "html": f"""
-                <h2>¡Gracias por tu pedido, {pedido.nombre_cliente}!</h2>
-                <p>Reservamos tus productos por <strong>15 minutos</strong> mientras completas el pago.</p>
-                <p><strong>Referencia de pago:</strong> {pedido.referencia_pago}</p>
-                <table border="1" cellpadding="6" style="border-collapse:collapse">
-                    <tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr>
-                    {_filas_html_detalles(pedido)}
-                </table>
-                <p><strong>Total: ${pedido.total_pedido:,.0f}</strong></p>
-                <p>Dirección de envío: {pedido.direccion_envio}</p>
-            """,
+            "html": _plantilla_correo_pedido(
+                pedido,
+                etiqueta_insignia="Pedido recibido",
+                color_insignia="#FEF3E7",
+                color_texto_insignia="#B45309",
+                titulo=f"¡Gracias por tu pedido, {pedido.nombre_cliente}!",
+                mensaje="Reservamos tus productos por 15 minutos mientras completas el pago. Pasado ese tiempo, el stock se libera.",
+            ),
+            "attachments": _ADJUNTOS_LOGO,
         })
     except Exception as error_correo:
         print(f"Alerta del Sistema: No se pudo enviar el correo de recepción del pedido {pedido.id}: {error_correo}")
@@ -111,17 +306,15 @@ def enviar_correo_pago_confirmado(pedido: PedidoWeb):
             "from": "M Accesorios <onboarding@resend.dev>",
             "to": pedido.email_cliente,
             "subject": f"¡Pago confirmado! Pedido #{pedido.id} — M Accesorios",
-            "html": f"""
-                <h2>¡Tu pago fue confirmado, {pedido.nombre_cliente}!</h2>
-                <p>Ya estamos preparando tu pedido para enviarlo.</p>
-                <p><strong>Referencia de pago:</strong> {pedido.referencia_pago}</p>
-                <table border="1" cellpadding="6" style="border-collapse:collapse">
-                    <tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr>
-                    {_filas_html_detalles(pedido)}
-                </table>
-                <p><strong>Total: ${pedido.total_pedido:,.0f}</strong></p>
-                <p>Dirección de envío: {pedido.direccion_envio}</p>
-            """,
+            "html": _plantilla_correo_pedido(
+                pedido,
+                etiqueta_insignia="Pago confirmado",
+                color_insignia="#E3F7E9",
+                color_texto_insignia="#15803D",
+                titulo=f"¡Tu pago fue confirmado, {pedido.nombre_cliente}!",
+                mensaje="Ya estamos preparando tu pedido para enviarlo.",
+            ),
+            "attachments": _ADJUNTOS_LOGO,
         })
     except Exception as error_correo:
         print(f"Alerta del Sistema: No se pudo enviar el correo de pago confirmado del pedido {pedido.id}: {error_correo}")
@@ -194,7 +387,7 @@ def crear_pedido(request: Request, pedido_data: PedidoWebCreate, session: Sessio
         referencia_direccion=pedido_data.referencia_direccion,
         acepta_tratamiento_datos=pedido_data.acepta_tratamiento_datos,
         total_pedido=total,
-        referencia_pago=str(uuid.uuid4()),
+        referencia_pago=generar_referencia_pago(session),
         expira_en=datetime.now() + timedelta(minutes=MINUTOS_RESERVA),
     )
     session.add(nuevo_pedido)
