@@ -178,7 +178,7 @@ def _bloque_guia_html(pedido: PedidoWeb) -> str:
                     <tr>
                         <td style="padding:16px 20px;">
                             <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#2563EB;margin-bottom:4px;">Datos de envío</div>
-                            <div style="font-size:14px;line-height:1.6;color:#111111;">{" &middot; ".join(lineas)}</div>
+                            <div class="direccion-correo" style="font-size:14px;line-height:1.6;color:#111111;">{" &middot; ".join(lineas)}</div>
                         </td>
                     </tr>
                 </table>
@@ -214,6 +214,21 @@ def _plantilla_correo_pedido(
         link (igual hacen con teléfonos y fechas) — no es nada que nuestro
         HTML esté generando, es el cliente de correo metiendo mano. -->
         <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+        <!-- El meta de arriba solo lo respeta Apple Mail. Gmail (web y
+        app) detecta direcciones por su cuenta y las envuelve en su propio
+        link azul hacia Google Maps, sin importar el meta tag — esta regla
+        sobreescribe el estilo que Gmail le pone a ESE link específico
+        (identificado por la clase que ponemos abajo en el texto de la
+        dirección), sin tocar links reales que sí querramos mantener
+        azules en otro lado del correo. -->
+        <style type="text/css">
+            .direccion-correo a {{
+                color: #111111 !important;
+                text-decoration: none !important;
+                border-bottom: none !important;
+                cursor: default !important;
+            }}
+        </style>
     </head>
     <body style="margin:0;padding:0;background-color:#F4F4F4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F4F4;padding:32px 16px;">
@@ -282,7 +297,7 @@ def _plantilla_correo_pedido(
                         <tr>
                             <td style="padding:28px 32px 8px 32px;">
                                 <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#9A9A9A;margin-bottom:6px;">Dirección de envío</div>
-                                <div style="font-size:14px;line-height:1.6;color:#111111;">{_direccion_html(pedido)}</div>
+                                <div class="direccion-correo" style="font-size:14px;line-height:1.6;color:#111111;">{_direccion_html(pedido)}</div>
                             </td>
                         </tr>
                         {bloque_extra}
