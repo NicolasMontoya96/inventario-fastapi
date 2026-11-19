@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlmodel import Session, select, update
 
 from db.models import PedidoWeb, DetallePedidoWeb, Producto
-from db.schemas.pedidoWebSchema import PedidoWebCreate, PedidoWebResponse
+from db.schemas.pedidoWebSchema import PedidoWebCreate, PedidoWebResponse, MarcarEnviadoRequest
 from db.database import get_session
 from limiter import limiter
 from auth.auth import obtener_usuario_actual
@@ -159,6 +159,34 @@ def _direccion_html(pedido: PedidoWeb) -> str:
     return pedido.direccion_envio
 
 
+def _bloque_guia_html(pedido: PedidoWeb) -> str:
+    """Bloque opcional con transportadora/número de guía, solo para el
+    correo de "pedido enviado" — y solo si se llenó al menos uno de los
+    dos datos (se puede despachar sin número de guía, ej. entrega
+    personal)."""
+    if not pedido.transportadora and not pedido.numero_guia:
+        return ""
+    lineas = []
+    if pedido.transportadora:
+        lineas.append(pedido.transportadora)
+    if pedido.numero_guia:
+        lineas.append(f"Guía: {pedido.numero_guia}")
+    return f"""
+        <tr>
+            <td style="padding:0 32px 8px 32px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#EFF6FF;border-radius:12px;">
+                    <tr>
+                        <td style="padding:16px 20px;">
+                            <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#2563EB;margin-bottom:4px;">Datos de envío</div>
+                            <div style="font-size:14px;line-height:1.6;color:#111111;">{" &middot; ".join(lineas)}</div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    """
+
+
 def _plantilla_correo_pedido(
     pedido: PedidoWeb,
     *,
@@ -167,13 +195,26 @@ def _plantilla_correo_pedido(
     color_texto_insignia: str,
     titulo: str,
     mensaje: str,
+    bloque_extra: str = "",
 ) -> str:
-    """Plantilla compartida por los dos correos de pedidos web (recibido /
-    pago confirmado) — misma estructura, solo cambian la insignia de estado,
-    el título y el mensaje. Todo con estilos inline y layout de tablas (no
-    flexbox/grid) porque así es como hay que escribir HTML de correos para
-    que se vea igual en Gmail, Outlook y el resto de clientes de correo."""
+    """Plantilla compartida por los correos de pedidos web (recibido / pago
+    confirmado / enviado) — misma estructura, solo cambian la insignia de
+    estado, el título, el mensaje y opcionalmente un bloque extra (ej. datos
+    de envío). Todo con estilos inline y layout de tablas (no flexbox/grid)
+    porque así es como hay que escribir HTML de correos para que se vea
+    igual en Gmail, Outlook y el resto de clientes de correo."""
     return f"""
+    <!doctype html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <!-- Sin esto, Gmail y sobre todo Apple Mail "autodetectan" la
+        dirección de envío y la muestran subrayada y azul como si fuera un
+        link (igual hacen con teléfonos y fechas) — no es nada que nuestro
+        HTML esté generando, es el cliente de correo metiendo mano. -->
+        <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+    </head>
     <body style="margin:0;padding:0;background-color:#F4F4F4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F4F4;padding:32px 16px;">
             <tr>
@@ -244,6 +285,7 @@ def _plantilla_correo_pedido(
                                 <div style="font-size:14px;line-height:1.6;color:#111111;">{_direccion_html(pedido)}</div>
                             </td>
                         </tr>
+                        {bloque_extra}
 
                         <!-- Pie -->
                         <tr>
@@ -264,6 +306,7 @@ def _plantilla_correo_pedido(
             </tr>
         </table>
     </body>
+    </html>
     """
 
 
@@ -318,6 +361,32 @@ def enviar_correo_pago_confirmado(pedido: PedidoWeb):
         })
     except Exception as error_correo:
         print(f"Alerta del Sistema: No se pudo enviar el correo de pago confirmado del pedido {pedido.id}: {error_correo}")
+
+
+def enviar_correo_pedido_enviado(pedido: PedidoWeb):
+    """Aviso de que el pedido salió hacia el cliente — se llama solo desde
+    el endpoint de admin que marca el pedido como "enviado". Incluye
+    transportadora/número de guía si se cargaron al momento de despachar."""
+    if not pedido.email_cliente:
+        return
+    try:
+        resend.Emails.send({
+            "from": "M Accesorios <onboarding@resend.dev>",
+            "to": pedido.email_cliente,
+            "subject": f"¡Tu pedido va en camino! Pedido #{pedido.id} — M Accesorios",
+            "html": _plantilla_correo_pedido(
+                pedido,
+                etiqueta_insignia="Pedido enviado",
+                color_insignia="#DBEAFE",
+                color_texto_insignia="#1D4ED8",
+                titulo=f"¡Tu pedido va en camino, {pedido.nombre_cliente}!",
+                mensaje="Ya despachamos tu pedido. Pronto debería llegar a la dirección que nos diste.",
+                bloque_extra=_bloque_guia_html(pedido),
+            ),
+            "attachments": _ADJUNTOS_LOGO,
+        })
+    except Exception as error_correo:
+        print(f"Alerta del Sistema: No se pudo enviar el correo de pedido enviado del pedido {pedido.id}: {error_correo}")
 
 
 @router.post("/", response_model=PedidoWebResponse, status_code=201)
@@ -538,3 +607,67 @@ async def webhook_wompi(request: Request, session: Session = Depends(get_session
         enviar_correo_pago_confirmado(pedido)
 
     return {"ok": True}
+
+
+@router.post(
+    "/{referencia_pago}/enviar",
+    response_model=PedidoWebResponse,
+    dependencies=[Depends(obtener_usuario_actual)],
+)
+def marcar_pedido_enviado(
+    referencia_pago: str,
+    datos: MarcarEnviadoRequest,
+    session: Session = Depends(get_session),
+):
+    """Protegido (panel de admin): se llama cuando el pedido ya se empacó y
+    se despachó. transportadora/numero_guia son opcionales — a veces se
+    despacha sin ellos (ej. entrega personal)."""
+    pedido = session.exec(
+        select(PedidoWeb).where(PedidoWeb.referencia_pago == referencia_pago)
+    ).first()
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+    if pedido.estado != "pagado":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Solo se puede marcar como enviado un pedido pagado (estado actual: {pedido.estado})",
+        )
+
+    pedido.estado = "enviado"
+    pedido.transportadora = datos.transportadora
+    pedido.numero_guia = datos.numero_guia
+    session.add(pedido)
+    session.commit()
+    session.refresh(pedido)
+
+    enviar_correo_pedido_enviado(pedido)
+    return pedido
+
+
+@router.post(
+    "/{referencia_pago}/entregar",
+    response_model=PedidoWebResponse,
+    dependencies=[Depends(obtener_usuario_actual)],
+)
+def marcar_pedido_entregado(referencia_pago: str, session: Session = Depends(get_session)):
+    """Protegido (panel de admin): último paso del seguimiento, sin datos
+    adicionales ni correo — solo refleja que el cliente ya recibió el
+    pedido."""
+    pedido = session.exec(
+        select(PedidoWeb).where(PedidoWeb.referencia_pago == referencia_pago)
+    ).first()
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+    if pedido.estado != "enviado":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Solo se puede marcar como entregado un pedido enviado (estado actual: {pedido.estado})",
+        )
+
+    pedido.estado = "entregado"
+    session.add(pedido)
+    session.commit()
+    session.refresh(pedido)
+    return pedido

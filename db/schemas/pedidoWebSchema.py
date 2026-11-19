@@ -24,6 +24,14 @@ class PedidoWebCreate(SQLModel):
     acepta_tratamiento_datos: bool
     items: List[ItemCarrito]
 
+class MarcarEnviadoRequest(SQLModel):
+    # Ambos opcionales: a veces se despacha sin número de guía a mano
+    # (ej. entrega personal), y no queremos bloquear el cambio de estado
+    # por eso.
+    transportadora: Optional[str] = None
+    numero_guia: Optional[str] = None
+
+
 class DetallePedidoWebResponse(SQLModel):
     id: int
     producto_id: int
@@ -45,6 +53,8 @@ class PedidoWebResponse(SQLModel):
     total_pedido: Decimal
     estado: str
     referencia_pago: str
+    transportadora: Optional[str] = None
+    numero_guia: Optional[str] = None
     # Ya existía en el modelo (se usa para liberar el stock reservado),
     # simplemente no se exponía todavía. El frontend la necesita para
     # mostrar la cuenta regresiva en la página de "pedido pendiente".

@@ -162,11 +162,18 @@ class PedidoWeb(SQLModel, table=True):
     acepta_tratamiento_datos: bool = Field(default=False)
 
     total_pedido: Decimal
-    estado: str = Field(default="pendiente")  # pendiente | pagado | fallido | expirado
+    estado: str = Field(default="pendiente")  # pendiente | pagado | fallido | expirado | enviado | entregado
 
     referencia_pago: str = Field(unique=True, index=True)
     transaccion_wompi_id: Optional[str] = Field(default=None, index=True)
     expira_en: Optional[datetime] = Field(default=None)
+
+    # Se llenan a mano desde el panel de admin cuando se despacha el
+    # pedido (estado -> "enviado"). Nunca los pone el cliente ni ninguna
+    # transportadora automáticamente — por ahora no hay integración con
+    # ninguna.
+    transportadora: Optional[str] = Field(default=None)
+    numero_guia: Optional[str] = Field(default=None)
 
     detalles: list["DetallePedidoWeb"] = Relationship(back_populates="pedido")
 
