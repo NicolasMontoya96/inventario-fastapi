@@ -15,7 +15,17 @@ from db.database import get_session
 password_hash = PasswordHash((BcryptHasher(),))
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "clave_de_respaldo")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    # Nunca un valor de respaldo: si faltara, firmariamos y aceptariamos
+    # tokens con una clave conocida (estaria en este mismo repo), lo que le
+    # daria a cualquiera la posibilidad de forjar un token de administrador.
+    # Mejor que la app no arranque a que arranque insegura sin avisar.
+    raise RuntimeError(
+        "Falta la variable de entorno SECRET_KEY. Definela en el entorno "
+        "(Railway > Variables) antes de iniciar la aplicacion — no hay "
+        "valor por defecto porque quedaria expuesto en el repositorio."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 
 
