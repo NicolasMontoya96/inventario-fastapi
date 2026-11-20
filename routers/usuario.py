@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from db.database import get_session
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
@@ -6,6 +6,7 @@ from datetime import timedelta
 from db.models import Usuario
 from db.schemas.userSchema import UsuarioCreate, Token, UsuarioResponse
 from auth.auth import obtener_password_hash, verificar_password, crear_token_acceso, ACCESS_TOKEN_EXPIRE_MINUTES
+from limiter import limiter
 
 router = APIRouter(
     prefix="/autenticacion",
@@ -40,9 +41,10 @@ def registrar_usuario(usuario: UsuarioCreate, session: Session = Depends(get_ses
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 def login_para_obtener_token(
-    
-    form_data: OAuth2PasswordRequestForm = Depends(), 
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session)
 ):
     # 1. Buscamos al usuario en la base de datos

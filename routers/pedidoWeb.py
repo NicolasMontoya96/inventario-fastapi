@@ -1,5 +1,6 @@
 import os
 import hashlib
+import hmac
 import secrets
 import resend
 from pathlib import Path
@@ -502,7 +503,8 @@ def listar_pedidos(
 
 
 @router.get("/{referencia_pago}", response_model=PedidoWebResponse)
-def consultar_pedido(referencia_pago: str, session: Session = Depends(get_session)):
+@limiter.limit("20/minute")
+def consultar_pedido(request: Request, referencia_pago: str, session: Session = Depends(get_session)):
     pedido = session.exec(
         select(PedidoWeb).where(PedidoWeb.referencia_pago == referencia_pago)
     ).first()
@@ -512,7 +514,8 @@ def consultar_pedido(referencia_pago: str, session: Session = Depends(get_sessio
 
 
 @router.get("/{referencia_pago}/firma-pago")
-def obtener_firma_pago(referencia_pago: str, session: Session = Depends(get_session)):
+@limiter.limit("20/minute")
+def obtener_firma_pago(request: Request, referencia_pago: str, session: Session = Depends(get_session)):
     """Datos que el frontend necesita para abrir el Widget de Wompi sobre
     este pedido: llave pública (segura de compartir) + firma de integridad
     (prueba de que el monto/referencia no se manipularon en el navegador).
@@ -584,7 +587,12 @@ async def webhook_wompi(request: Request, session: Session = Depends(get_session
 
     checksum_calculado = hashlib.sha256(cadena.encode()).hexdigest().upper()
 
-    if checksum_calculado != checksum_recibido.upper():
+    # Comparación en tiempo constante: con "!=" normal, el tiempo que tarda
+    # la comparación varía según cuántos caracteres coinciden al inicio, lo
+    # que en teoría permite reconstruir el checksum correcto caracter por
+    # caracter midiendo esas diferencias (timing attack). hmac.compare_digest
+    # siempre tarda lo mismo sin importar en qué posición difieren.
+    if not hmac.compare_digest(checksum_calculado, checksum_recibido.upper()):
         raise HTTPException(status_code=401, detail="Firma inválida")
 
     transaccion = payload.get("data", {}).get("transaction", {})
